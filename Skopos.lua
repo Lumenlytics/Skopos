@@ -25,16 +25,24 @@ local function chatLine(text)
     DEFAULT_CHAT_FRAME:AddMessage("|cffaaaaaa  " .. text:gsub("|", "||") .. "|r")
 end
 
--- Secret-marked frames error on geometry reads; forbidden frames error on most
--- reads. Every widget call goes through pcall.
+-- Secret-marked frames may hand back secret values instead of erroring — and a
+-- secret survives pcall, then detonates on any later arithmetic, comparison, or
+-- concat. So every widget call goes through pcall AND every return is scrubbed:
+-- secrets come out as nil, so downstream "or '?'" fallbacks kick in.
+local function scrub(v)
+    if issecretvalue and issecretvalue(v) then return nil end
+    return v
+end
+
 local function safe(fn, ...)
     if not fn then return nil end
     local ok, a, b, c, d, e = pcall(fn, ...)
-    if ok then return a, b, c, d, e end
+    if not ok then return nil end
+    return scrub(a), scrub(b), scrub(c), scrub(d), scrub(e)
 end
 
 local function round(n)
-    if type(n) ~= "number" then return "?" end
+    if type(n) ~= "number" or (issecretvalue and issecretvalue(n)) then return "?" end
     return math.floor(n * 10 + 0.5) / 10
 end
 
