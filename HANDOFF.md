@@ -7,8 +7,10 @@ screen and get its exact name and ancestry.
 
 ## Status
 
-- v1.0.1 **WORKING in-game** 2026-07-24: first real map = 28,854 frames, 4.9 MB,
-  zero forbidden stubs, zero secret-degraded rows. `/sko grab` not yet exercised.
+- v1.0.1 **FULLY VERIFIED in-game** 2026-07-24: map = 28,854 frames, 4.9 MB, zero
+  forbidden stubs, zero secret-degraded rows. `/sko grab` verified on a real UI
+  element (PaperDollSidebarTab2 with full ancestry to UIParent). Note: hovering
+  open world grabs an anonymous protected WorldFrame overlay — that's expected.
 - v1.0.0 lesson: secret numbers survive pcall and only detonate on later
   arithmetic — `GetSize` returns secrets on secret-marked widgets even out of
   combat. Everything is scrubbed with `issecretvalue` at the `safe()` boundary now.
