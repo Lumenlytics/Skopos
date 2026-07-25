@@ -7,9 +7,11 @@ screen and get its exact name and ancestry.
 
 ## Status
 
-- v1.0.0 built 2026-07-24, **not yet tested in-game**.
-- First test: log in, `/sko` (help should print), `/sko map`, `/reload`, then check
-  the SavedVariables file exists and has ~thousands of lines.
+- v1.0.1 **WORKING in-game** 2026-07-24: first real map = 28,854 frames, 4.9 MB,
+  zero forbidden stubs, zero secret-degraded rows. `/sko grab` not yet exercised.
+- v1.0.0 lesson: secret numbers survive pcall and only detonate on later
+  arithmetic — `GetSize` returns secrets on secret-marked widgets even out of
+  combat. Everything is scrubbed with `issecretvalue` at the `safe()` boundary now.
 
 ## The workflow this enables
 

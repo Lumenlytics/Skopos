@@ -7,7 +7,7 @@
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.0.0"
+local VERSION = "1.0.1"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
