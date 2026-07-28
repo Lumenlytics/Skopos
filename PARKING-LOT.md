@@ -27,7 +27,7 @@ honest about the build that produced it. A re-map will stamp 1.0.1.
 
 ---
 
-## 2. HANDOFF.md overstates the secret-scrub result
+## 2. RESOLVED — HANDOFF.md overstated the secret-scrub result
 
 **Found:** 2026-07-28, verified by counting rows in the live SavedVariables.
 
@@ -48,8 +48,14 @@ plus a couple of paged-content containers.
 instead of detonating on a secret read. 23 of 28,854 rows is 0.08%. The only thing wrong
 is the doc line.
 
-**To resolve:** reword that bullet in HANDOFF.md to "23 secret-degraded rows (0.08%),
-all healing-prediction bars — the scrubber working as intended."
+**Resolved 2026-07-28.** HANDOFF.md's Status bullet now reads the real numbers. Counts
+re-verified independently against the live SavedVariables before editing: 23 rows with
+`?` in the size field, 0 rows carrying the `F` flag.
+
+One correction to this note's own suggested wording — "all healing-prediction bars" was
+not accurate. It is *mostly* `Health.HealAbsorb` / `Health.HealingAll` StatusBars, plus a
+few paged-content containers (`WarbandSceneJournal.IconsFrame.Icons`,
+`TransmogFrame…ItemsFrame.PagedContent`). HANDOFF says "mostly … plus a few".
 
 ---
 

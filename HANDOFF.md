@@ -8,7 +8,10 @@ screen and get its exact name and ancestry.
 ## Status
 
 - v1.0.1 **FULLY VERIFIED in-game** 2026-07-24: map = 28,854 frames, 4.9 MB, zero
-  forbidden stubs, zero secret-degraded rows. `/sko grab` verified on a real UI
+  forbidden stubs, and 23 secret-degraded rows (0.08%) — mostly healing-prediction
+  StatusBars (`Health.HealAbsorb`, `Health.HealingAll`) plus a few paged-content
+  containers. Those are `safe()` doing its job, degrading to `?` rather than
+  detonating on a secret read, not a defect. `/sko grab` verified on a real UI
   element (PaperDollSidebarTab2 with full ancestry to UIParent). Note: hovering
   open world grabs an anonymous protected WorldFrame overlay — that's expected.
 - v1.0.0 lesson: secret numbers survive pcall and only detonate on later
