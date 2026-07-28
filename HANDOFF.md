@@ -25,6 +25,9 @@ screen and get its exact name and ancestry.
 3. For "what IS this thing on my screen": `/sko grab 3`, hover the element during the
    countdown, read the printed stack + ancestry. `/sko note <text>` annotates it,
    `/reload` persists it for Claude.
+4. For "does this API exist in this build": `/sko api <text>`, then `/reload`. The map
+   covers widgets only — a function name will never appear in it, because
+   `EnumerateFrames` walks frames and globals are not frames. This is the other half.
 
 Remember: SavedVariables only flush on `/reload` or logout. A map taken without a
 reload afterward is invisible to Claude.
@@ -44,6 +47,13 @@ debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
 
 `SkoposDB.map.meta` has timestamp, client build, resolution, UI scale, counts, and
 this format string. `SkoposDB.picks` is an array of grabs: `{time, stack, ancestry, note?}`.
+
+`SkoposDB.api` (v1.1.0+) is an append-only log of `/sko api` sweeps:
+`{time, build, query, count, results}`, where `results` is a sorted array of
+`globalName|type` strings. `type` is the Lua type, or `forbidden` (access errored)
+or `secret` (secret-marked). Append-only means several probes can be run in one
+session and read after a single `/reload`. Note `/sko clear` wipes `picks` only —
+it deliberately leaves the api log alone.
 
 ## Design constraints (Midnight KB)
 

@@ -2,12 +2,13 @@
 -- /sko map [full]   snapshot every frame (full = include textures/fontstrings) into SkoposDB
 -- /sko grab [sec]   after a countdown, capture the frame stack under the mouse
 -- /sko find <text>  search live frame names
+-- /sko api <text>   search _G for globals (does this API exist in this build?)
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.0.1"
+local VERSION = "1.1.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -257,6 +258,54 @@ local function Find(pattern)
     end
 end
 
+-- The frame map answers "does this WIDGET exist". This answers the other half:
+-- "does this API exist in this build" — globals are not frames, so EnumerateFrames
+-- will never surface a function name no matter how complete the map is. Results are
+-- recorded to SkoposDB.api so the answer survives to disk and can be read out of game.
+--
+-- Hoisted so the sweep doesn't build a closure per global.
+local function indexGlobal(t, k) return t[k] end
+
+-- Deliberately NOT routed through safe(): scrub() turns secrets into nil, which is
+-- correct for geometry but here would report a secret global as "does not exist" —
+-- the exact opposite of the truth. So secret is reported as its own type.
+local function ApiProbe(pattern)
+    if not pattern or pattern == "" then
+        msg("Usage: /sko api <text>   (substring of a global name, case-insensitive)")
+        return
+    end
+    local needle = pattern:lower()
+    local results = {}
+    for k in pairs(_G) do
+        if type(k) == "string" and k:lower():find(needle, 1, true) then
+            local ok, v = pcall(indexGlobal, _G, k)
+            local vtype
+            if not ok then
+                vtype = "forbidden"
+            elseif issecretvalue and issecretvalue(v) then
+                vtype = "secret"
+            else
+                vtype = type(v)
+            end
+            results[#results + 1] = k .. "|" .. vtype
+        end
+    end
+    table.sort(results)
+    table.insert(SkoposDB.api, {
+        time = date("%Y-%m-%d %H:%M:%S"),
+        build = select(4, GetBuildInfo()),
+        query = pattern,
+        count = #results,
+        results = results,
+    })
+    msg(("%d global(s) matching '%s':"):format(#results, pattern))
+    for i = 1, math.min(#results, 30) do chatLine(results[i]) end
+    if #results > 30 then
+        msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.api."):format(#results - 30))
+    end
+    msg(("Saved as api query #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.api))
+end
+
 local function Note(text)
     if not text or text == "" then
         msg("Usage: /sko note <text>")
@@ -277,6 +326,7 @@ local function Help()
     chatLine("/sko map full   same, plus textures and fontstrings (bigger file)")
     chatLine("/sko grab [sec] capture the frame stack under the mouse (default 2s)")
     chatLine("/sko find <txt> search live frame names")
+    chatLine("/sko api <txt>  search _G — does this API exist in this build?")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")
     chatLine("Maps/grabs hit disk on /reload, at WTF\\...\\SavedVariables\\Skopos.lua")
@@ -294,6 +344,8 @@ SlashCmdList.SKOPOS = function(input)
         Grab(rest)
     elseif cmd == "find" then
         Find(rest)
+    elseif cmd == "api" then
+        ApiProbe(rest)
     elseif cmd == "note" then
         Note(rest)
     elseif cmd == "clear" then
@@ -311,5 +363,6 @@ loader:SetScript("OnEvent", function(self, _, name)
     self:UnregisterEvent("ADDON_LOADED")
     SkoposDB = SkoposDB or {}
     SkoposDB.picks = SkoposDB.picks or {}
+    SkoposDB.api = SkoposDB.api or {}
     msg("v" .. VERSION .. " loaded. /sko for commands.")
 end)
