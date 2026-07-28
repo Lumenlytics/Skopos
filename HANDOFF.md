@@ -70,6 +70,20 @@ or `secret` (secret-marked). Append-only means several probes can be run in one
 session and read after a single `/reload`. Note `/sko clear` wipes `picks` only —
 it deliberately leaves the api log alone.
 
+⚠ **`/sko api` searches `_G`'s own keys ONLY — it does not descend into namespace
+tables.** `C_Spell.GetSpellCooldown` lives inside the `C_Spell` table, so it can
+never appear in an api sweep no matter what you search for.
+
+**`count = 0` therefore means "no GLOBAL by that name", NOT "this API does not
+exist."** This bites on exactly the modern APIs you are most likely to ask about,
+because Blizzard has been migrating globals into `C_*` namespaces for years. Real
+example, 2026-07-28: `/sko api GetSpellCooldown` returned 0 at build `120007` — the
+global is genuinely gone, but `C_Spell.GetSpellCooldown` is a separate question that
+the sweep structurally cannot answer.
+
+Use `/sko secret <dotted.path>` to settle it — it resolves paths a segment at a time
+and reports which segment is missing. That is why dotted-path resolution exists.
+
 ## Design constraints (Midnight KB)
 
 - Every widget read is pcall-guarded (`safe()`): secret-marked frames error on
