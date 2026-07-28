@@ -28,6 +28,10 @@ screen and get its exact name and ancestry.
 4. For "does this API exist in this build": `/sko api <text>`, then `/reload`. The map
    covers widgets only — a function name will never appear in it, because
    `EnumerateFrames` walks frames and globals are not frames. This is the other half.
+5. For "can I do maths on what it returns": `/sko secret <API> [args]`, then `/reload`.
+   Existence is rarely the real question on Midnight — secrecy is, because it decides
+   whether a feature is cheap or needs an engine-side workaround. Run each probe
+   **twice, in and out of combat**, since that is frequently where the answer changes.
 
 Remember: SavedVariables only flush on `/reload` or logout. A map taken without a
 reload afterward is invisible to Claude.
@@ -47,6 +51,17 @@ debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
 
 `SkoposDB.map.meta` has timestamp, client build, resolution, UI scale, counts, and
 this format string. `SkoposDB.picks` is an array of grabs: `{time, stack, ancestry, note?}`.
+
+`SkoposDB.secret` (v1.2.0+) is an append-only log of `/sko secret` probes:
+`{time, build, query, inCombat, anySecret, errored, returns}`, where `returns` is an
+array of `index|luaType|SECRET-or-plain|renderedValue` strings. Secret values are
+recorded as the literal `<secret>` and **never** stored raw — a secret written into
+SavedVariables would either fail to serialise or poison whatever reads it back.
+
+`inCombat` is load-bearing, not trivia: many values are secret **only** in combat, so
+a probe result is meaningless without knowing which state produced it. Unlike
+`/sko map`, this command deliberately runs in combat for exactly that reason — to
+answer "is this secret?" you usually need both readings of the same API.
 
 `SkoposDB.api` (v1.1.0+) is an append-only log of `/sko api` sweeps:
 `{time, build, query, count, results}`, where `results` is a sorted array of

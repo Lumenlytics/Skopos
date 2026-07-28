@@ -3,12 +3,13 @@
 -- /sko grab [sec]   after a countdown, capture the frame stack under the mouse
 -- /sko find <text>  search live frame names
 -- /sko api <text>   search _G for globals (does this API exist in this build?)
+-- /sko secret <api> [args]  call an API, report whether its returns are SECRET
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -306,6 +307,132 @@ local function ApiProbe(pattern)
     msg(("Saved as api query #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.api))
 end
 
+-- /sko api answers "does this exist". This answers the follow-up that actually decides
+-- whether a feature is cheap or hard on Midnight: "is what it hands back a SECRET?"
+-- A secret survives pcall and only detonates on later arithmetic, comparison or
+-- concat — so a value can look perfectly fine and blow up three functions later.
+--
+-- Deliberately permitted IN COMBAT, unlike /sko map: many values are secret only in
+-- combat, so combat state is part of the answer and is recorded alongside it.
+
+local unpack = unpack or table.unpack
+
+-- pcall returns a variable number of values and some may be nil, so select("#") is
+-- the only honest count — #results would stop at the first nil.
+local function capture(ok, ...)
+    return ok, { n = select("#", ...), ... }
+end
+
+-- Never call this on a value until it is known non-secret: tostring on a secret is
+-- exactly the kind of coercion that detonates.
+local function renderValue(v, maxLen)
+    maxLen = maxLen or 60
+    if type(v) == "string" then
+        if #v > maxLen then return v:sub(1, maxLen) .. "…" end
+        return v
+    end
+    local ok, s = pcall(tostring, v)
+    if ok and type(s) == "string" then return s end
+    return "<tostring failed>"
+end
+
+-- Walks a dotted path (C_Spell.GetSpellCooldown) a segment at a time, so a missing
+-- namespace reports which segment broke instead of erroring.
+local function resolvePath(path)
+    local cur = _G
+    for part in path:gmatch("[^%.]+") do
+        if type(cur) ~= "table" then
+            return nil, "'" .. part .. "' — the thing before it is not a table"
+        end
+        local ok, nxt = pcall(indexGlobal, cur, part)
+        if not ok then
+            return nil, "indexing '" .. part .. "' errored (forbidden?)"
+        end
+        if nxt == nil then
+            return nil, "'" .. part .. "' does not exist"
+        end
+        cur = nxt
+    end
+    return cur
+end
+
+local function classify(v)
+    local isSecret = (issecretvalue and issecretvalue(v)) and true or false
+    return isSecret, type(v), isSecret and "<secret>" or renderValue(v)
+end
+
+local function SecretProbe(input)
+    if not input or input == "" then
+        msg("Usage: /sko secret <API> [args]   e.g. /sko secret UnitPower player")
+        chatLine("args coerce: numbers, true, false, nil — anything else stays a string")
+        chatLine("dotted paths work: /sko secret C_Spell.GetSpellCooldown 6552")
+        return
+    end
+    local path, rest = input:match("^(%S+)%s*(.-)%s*$")
+    local target, err = resolvePath(path)
+    if not target then
+        msg(("Cannot resolve '%s': %s"):format(path, err))
+        return
+    end
+
+    local argv, argn = {}, 0
+    for word in rest:gmatch("%S+") do
+        argn = argn + 1
+        if word == "nil" then argv[argn] = nil
+        elseif word == "true" then argv[argn] = true
+        elseif word == "false" then argv[argn] = false
+        else argv[argn] = tonumber(word) or word end
+    end
+
+    local inCombat = InCombatLockdown() and true or false
+    local lines, anySecret, errText, headline = {}, false, nil, nil
+
+    if type(target) ~= "function" then
+        -- Not callable, but "this global is a secret table" is still a real answer.
+        local isSecret, vtype, shown = classify(target)
+        anySecret = isSecret
+        headline = "is not a function — the value itself:"
+        lines[1] = table.concat({ "0", vtype, isSecret and "SECRET" or "plain", shown }, "|")
+    else
+        local ok, res = capture(pcall(target, unpack(argv, 1, argn)))
+        if not ok then
+            errText = renderValue(res[1], 200)
+        elseif res.n == 0 then
+            headline = "returned no values"
+        else
+            headline = ("-> %d value(s)"):format(res.n)
+            for i = 1, res.n do
+                local isSecret, vtype, shown = classify(res[i])
+                if isSecret then anySecret = true end
+                lines[#lines + 1] = table.concat({ i, vtype,
+                    isSecret and "SECRET" or "plain", shown }, "|")
+            end
+        end
+    end
+
+    -- Store the rendered strings only, never the raw values: a secret written into
+    -- SavedVariables would either fail to serialise or poison whatever reads it.
+    table.insert(SkoposDB.secret, {
+        time = date("%Y-%m-%d %H:%M:%S"),
+        build = select(4, GetBuildInfo()),
+        query = input,
+        inCombat = inCombat,
+        errored = errText,
+        anySecret = anySecret,
+        returns = lines,
+    })
+
+    if errText then
+        msg(("%s errored: %s"):format(path, errText))
+    else
+        msg(("%s %s%s"):format(path, headline,
+            anySecret and " |cffff4444SECRET present|r" or ""))
+        for _, line in ipairs(lines) do chatLine(line) end
+    end
+    msg(("%s. Saved as secret probe #%d. |cffffcc00/reload|r to flush to disk."):format(
+        inCombat and "|cffff8800IN COMBAT|r" or "Out of combat", #SkoposDB.secret))
+end
+
 local function Note(text)
     if not text or text == "" then
         msg("Usage: /sko note <text>")
@@ -327,6 +454,7 @@ local function Help()
     chatLine("/sko grab [sec] capture the frame stack under the mouse (default 2s)")
     chatLine("/sko find <txt> search live frame names")
     chatLine("/sko api <txt>  search _G — does this API exist in this build?")
+    chatLine("/sko secret <api> [args]  does it return a SECRET? (works in combat)")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")
     chatLine("Maps/grabs hit disk on /reload, at WTF\\...\\SavedVariables\\Skopos.lua")
@@ -346,6 +474,8 @@ SlashCmdList.SKOPOS = function(input)
         Find(rest)
     elseif cmd == "api" then
         ApiProbe(rest)
+    elseif cmd == "secret" then
+        SecretProbe(rest)
     elseif cmd == "note" then
         Note(rest)
     elseif cmd == "clear" then
@@ -364,5 +494,6 @@ loader:SetScript("OnEvent", function(self, _, name)
     SkoposDB = SkoposDB or {}
     SkoposDB.picks = SkoposDB.picks or {}
     SkoposDB.api = SkoposDB.api or {}
+    SkoposDB.secret = SkoposDB.secret or {}
     msg("v" .. VERSION .. " loaded. /sko for commands.")
 end)
