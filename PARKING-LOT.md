@@ -70,9 +70,12 @@ First real payoff, 2026-07-28 — two Panoply questions answered straight from t
 no in-game testing needed:
 
 - **Confirmed `Blizzard.lua`'s targets exist**: `CompactRaidFrameManager` and
-  `CompactRaidFrameContainer` are both present at build `120007`. (The map covers
-  frames, not globals, so `CompactRaidFrameManager_SetSetting` /
-  `_UpdateShown` are still unverified.)
+  `CompactRaidFrameContainer` are both present at build `120007`.
+  **The function half is now confirmed too (2026-07-28, via `/sko api`, v1.2.0):**
+  `CompactRaidFrameManager_SetSetting|function` and
+  `CompactRaidFrameManager_UpdateShown|function` both exist — 51 matching globals in
+  total. `Blizzard.lua` is **not** silently no-opping. Also available if useful:
+  `_GetSetting`, `_GetSettingBeforeLoad`, `_Toggle`, `_UpdateContainerVisibility`.
 - **Supplied the anchor targets for Panoply's P4.9** cooldown-viewer integration:
   `WarminatorPrimaryGroupAnchor` (top-level Frame, 283.1x46.9), plus Blizzard's
   `EssentialCooldownViewer`, `UtilityCooldownViewer`, `BuffBarCooldownViewer` and
