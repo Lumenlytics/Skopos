@@ -87,6 +87,65 @@ that changed recently.
 
 ---
 
+## 4. Five researched-but-unbuilt commands
+
+**Researched 2026-07-28.** Ranked by value. API existence was verified by counting
+real usage across the 131 addons installed at `Interface\AddOns` — if oUF or Dominos
+calls it, it exists at build `120007`. Counts are that evidence, not guesses.
+
+Follows the pattern `/sko api` and `/sko secret` established: capture to an
+append-only `SkoposDB.<name>` log, render values as pipe-delimited strings, flush on
+`/reload`, never store a raw value.
+
+| Command | Answers | API evidence |
+|---|---|---|
+| `/sko attr <frame>` | Secure attributes on a live frame. Serves P4.3 `destroytotem` and P4.8 header attrs, and lets you *study* a shipping in-combat `cancelaura` button instead of guessing | `GetAttribute` — **172 uses** |
+| `/sko scripts <frame>` | Which handlers are set. `OnUpdate` = perf smell, `OnClick` = interactive | `GetScript` 120, `HasScript` 6 |
+| `/sko events <sec>` | Sniff every event firing in a window — "what should I hook?" | `RegisterAllEvents` — **151 uses** |
+| `/sko addons` | Name/version/enabled/LoD/memory. Explains frame provenance: who made `DetailsBarra_1_5` | `C_AddOns.GetAddOnMetadata` 61 |
+| `/sko cvar <pattern>` | CVar sweep. Compact raid frame settings live here — directly relevant to Panoply's `Blizzard.lua` | `C_CVar.GetCVar` 35, `GetCVarInfo` 18 |
+
+⚠ **`/sko attr` has a keyspace problem worth knowing before starting it.** There is no
+"enumerate all attributes" call, so it must probe a known key list (`unit`, `type`,
+`type1`/`type2`, `action`, `spell`, `macrotext`, oUF and secure-header conventions).
+That makes it a best-effort dump, not a complete one — say so in its output rather
+than letting a caller read absence as proof.
+
+### Deliberately NOT worth building — don't rediscover these
+
+- **Per-frame registered-event lists.** The obvious "show every event this frame
+  listens to" has no public API: `GetRegisteredEvents` appears **zero times across all
+  131 installed addons**. Only `IsEventRegistered(event)` exists (5 uses), which means
+  probing a guessed list, not enumerating. Not worth an evening.
+- **Reverse anchor lookup** ("what anchors *to* this frame?"). Already derivable — the
+  map records every frame's anchor target, so it is a grep over data you already have.
+  Don't add a command for a question the existing file answers.
+
+Unverified either way: `GetRaidProfileOption` / `GetNumRaidProfiles` (0 local uses,
+which is not proof of absence). `/sko api GetRaidProfile` now answers that itself.
+
+---
+
+## 5. Teach `/sko api` to descend into `C_*` namespaces
+
+**Found 2026-07-28, the hard way.** `/sko api GetSpellCooldown` returned `count = 0`
+at build `120007`, which reads as "this API is gone" and is *not* what it means —
+`/sko api` sweeps `_G`'s own keys and never looks inside namespace tables, so
+`C_Spell.GetSpellCooldown` could never have appeared. The limitation is now documented
+in HANDOFF.md, but documentation is a workaround, not a fix.
+
+This bites hardest on exactly the APIs most worth asking about, since Blizzard has
+spent years migrating globals into `C_*` tables. A sweep that silently cannot see the
+modern half of the API surface is a sharp edge on the tool's primary use.
+
+**To resolve:** one extra pass over `_G` keys matching `^C_` whose value is a table,
+searching their keys too, and reporting hits as `C_Spell.GetSpellCooldown|function`.
+Guard each descent with the same `pcall` the top-level sweep uses. Consider making it
+opt-in (`/sko api <text> deep`) if the extra pass proves slow — but default-on is
+probably right, because the current default is quietly wrong.
+
+---
+
 ## Already recorded elsewhere — don't duplicate here
 
 HANDOFF.md's "Ideas / not built" section already holds the feature backlog
