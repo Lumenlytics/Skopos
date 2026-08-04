@@ -70,19 +70,26 @@ or `secret` (secret-marked). Append-only means several probes can be run in one
 session and read after a single `/reload`. Note `/sko clear` wipes `picks` only —
 it deliberately leaves the api log alone.
 
-⚠ **`/sko api` searches `_G`'s own keys ONLY — it does not descend into namespace
-tables.** `C_Spell.GetSpellCooldown` lives inside the `C_Spell` table, so it can
-never appear in an api sweep no matter what you search for.
+**As of v1.3.0 the sweep also descends one level into every `C_*` namespace table**,
+matching against the full dotted name. So `/sko api GetSpellCooldown` finds
+`C_Spell.GetSpellCooldown|function`, and `/sko api C_Spell` lists that whole
+namespace. One level only — `C_Foo.Bar`, never `C_Foo.Bar.Baz`.
 
-**`count = 0` therefore means "no GLOBAL by that name", NOT "this API does not
-exist."** This bites on exactly the modern APIs you are most likely to ask about,
-because Blizzard has been migrating globals into `C_*` namespaces for years. Real
-example, 2026-07-28: `/sko api GetSpellCooldown` returned 0 at build `120007` — the
-global is genuinely gone, but `C_Spell.GetSpellCooldown` is a separate question that
-the sweep structurally cannot answer.
+This mattered because Blizzard has spent years moving the API surface out of `_G`
+into `C_*` tables. Before 1.3.0 the sweep saw only `_G`'s own keys, so half the modern
+API reported `count = 0`, which reads as "this API is gone" — the exact wrong
+conclusion. `GetSpellCooldown` is the case that caught it on 2026-07-28: the global
+really is absent at `120007`, but the namespaced form exists.
 
-Use `/sko secret <dotted.path>` to settle it — it resolves paths a segment at a time
-and reports which segment is missing. That is why dotted-path resolution exists.
+Two fields make a zero-result sweep trustworthy: `deep = true` confirms namespaces
+were searched at all, and `namespaces` records how many. **`unreadable` is the one to
+check** — namespaces whose iteration errored, listed separately and deliberately kept
+OUT of `results`, because counting a coverage gap as a match would destroy the
+"`count = 0` means genuinely absent" property the descent exists to provide. If
+`unreadable` is non-empty, a match could be hiding in there.
+
+`/sko secret <dotted.path>` remains the way to confirm a specific call, since it
+resolves a path segment at a time and reports which segment is missing.
 
 ## Design constraints (Midnight KB)
 

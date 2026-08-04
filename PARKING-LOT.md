@@ -126,7 +126,7 @@ which is not proof of absence). `/sko api GetRaidProfile` now answers that itsel
 
 ---
 
-## 5. Teach `/sko api` to descend into `C_*` namespaces
+## 5. RESOLVED — `/sko api` now descends into `C_*` namespaces
 
 **Found 2026-07-28, the hard way.** `/sko api GetSpellCooldown` returned `count = 0`
 at build `120007`, which reads as "this API is gone" and is *not* what it means —
@@ -138,11 +138,21 @@ This bites hardest on exactly the APIs most worth asking about, since Blizzard h
 spent years migrating globals into `C_*` tables. A sweep that silently cannot see the
 modern half of the API surface is a sharp edge on the tool's primary use.
 
-**To resolve:** one extra pass over `_G` keys matching `^C_` whose value is a table,
-searching their keys too, and reporting hits as `C_Spell.GetSpellCooldown|function`.
-Guard each descent with the same `pcall` the top-level sweep uses. Consider making it
-opt-in (`/sko api <text> deep`) if the extra pass proves slow — but default-on is
-probably right, because the current default is quietly wrong.
+**Resolved 2026-07-28 in v1.3.0.** Default-on, as suspected — no `deep` flag, because
+the old default was quietly wrong and an opt-in fix leaves the trap armed. Matches
+against the full dotted name, so `GetSpellCooldown` finds `C_Spell.GetSpellCooldown`
+and `C_Spell` lists the namespace. Only C_* tables and name-matching keys get indexed,
+so it does not pay to index all ~30k globals. Secret namespaces are skipped rather
+than iterated.
+
+Building it surfaced a second bug worth remembering: the first version appended an
+`unreadable-namespace` marker into `results`, which meant every single sweep returned
+at least one "match" — including genuinely-absent APIs. That destroyed the very
+property the fix existed to create. Unreadable namespaces are now a separate
+`unreadable` field, reported as a caveat rather than counted as a hit.
+
+⚠ **Still one level deep only** (`C_Foo.Bar`, never `C_Foo.Bar.Baz`). No known case
+needs deeper today; revisit if one appears.
 
 ---
 

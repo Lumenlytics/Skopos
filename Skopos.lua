@@ -2,14 +2,14 @@
 -- /sko map [full]   snapshot every frame (full = include textures/fontstrings) into SkoposDB
 -- /sko grab [sec]   after a countdown, capture the frame stack under the mouse
 -- /sko find <text>  search live frame names
--- /sko api <text>   search _G for globals (does this API exist in this build?)
+-- /sko api <text>   search _G AND C_* namespaces (does this API exist in this build?)
 -- /sko secret <api> [args]  call an API, report whether its returns are SECRET
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.2.0"
+local VERSION = "1.3.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -270,25 +270,66 @@ local function indexGlobal(t, k) return t[k] end
 -- Deliberately NOT routed through safe(): scrub() turns secrets into nil, which is
 -- correct for geometry but here would report a secret global as "does not exist" —
 -- the exact opposite of the truth. So secret is reported as its own type.
+-- A forbidden global errors on access; a secret one must be reported AS secret
+-- rather than scrubbed to nil, which would read as "does not exist".
+local function apiTypeOf(ok, v)
+    if not ok then return "forbidden" end
+    if issecretvalue and issecretvalue(v) then return "secret" end
+    return type(v)
+end
+
+-- Matches against the full dotted name, so "GetSpellCooldown" finds
+-- C_Spell.GetSpellCooldown and "C_Spell" lists everything in that namespace.
+-- One level deep only: C_Foo.Bar, never C_Foo.Bar.Baz.
+local function sweepNamespace(results, nsName, ns, needle)
+    for mk in pairs(ns) do
+        if type(mk) == "string" then
+            local full = nsName .. "." .. mk
+            if full:lower():find(needle, 1, true) then
+                local ok, v = pcall(indexGlobal, ns, mk)
+                results[#results + 1] = full .. "|" .. apiTypeOf(ok, v)
+            end
+        end
+    end
+end
+
 local function ApiProbe(pattern)
     if not pattern or pattern == "" then
-        msg("Usage: /sko api <text>   (substring of a global name, case-insensitive)")
+        msg("Usage: /sko api <text>   (substring of an API name, case-insensitive)")
+        chatLine("searches _G and one level into every C_* namespace table")
         return
     end
     local needle = pattern:lower()
     local results = {}
+    local namespaces, unreadable = 0, {}
+
     for k in pairs(_G) do
-        if type(k) == "string" and k:lower():find(needle, 1, true) then
-            local ok, v = pcall(indexGlobal, _G, k)
-            local vtype
-            if not ok then
-                vtype = "forbidden"
-            elseif issecretvalue and issecretvalue(v) then
-                vtype = "secret"
-            else
-                vtype = type(v)
+        if type(k) == "string" then
+            local nameMatches = k:lower():find(needle, 1, true)
+            local isNamespace = k:find("^C_") ~= nil
+            -- Only index what we actually need: matching names, plus every C_* table.
+            -- Indexing all ~30k globals to find a few hundred namespaces is waste.
+            if nameMatches or isNamespace then
+                local ok, v = pcall(indexGlobal, _G, k)
+                if nameMatches then
+                    results[#results + 1] = k .. "|" .. apiTypeOf(ok, v)
+                end
+                -- Blizzard has spent years moving the API surface out of _G and into
+                -- C_* tables. A sweep seeing only _G's own keys reports count = 0 for
+                -- half the modern API, which reads as "this API is gone" — the exact
+                -- wrong conclusion. GetSpellCooldown vs C_Spell.GetSpellCooldown is
+                -- the case that caught this on 2026-07-28.
+                if isNamespace and ok and type(v) == "table"
+                    and not (issecretvalue and issecretvalue(v)) then
+                    namespaces = namespaces + 1
+                    -- Kept OUT of results deliberately: an unreadable namespace is a
+                    -- gap in coverage, not a match. Counting it as one would break the
+                    -- "count = 0 means genuinely absent" property this sweep exists for.
+                    if not pcall(sweepNamespace, results, k, v, needle) then
+                        unreadable[#unreadable + 1] = k
+                    end
+                end
             end
-            results[#results + 1] = k .. "|" .. vtype
         end
     end
     table.sort(results)
@@ -297,10 +338,20 @@ local function ApiProbe(pattern)
         build = select(4, GetBuildInfo()),
         query = pattern,
         count = #results,
+        -- Recorded so a future reader can tell a zero-result sweep actually looked
+        -- inside the namespaces, rather than being the old _G-only blind spot.
+        deep = true,
+        namespaces = namespaces,
+        unreadable = unreadable,
         results = results,
     })
-    msg(("%d global(s) matching '%s':"):format(#results, pattern))
+    msg(("%d match(es) for '%s' — searched _G + %d C_* namespace(s):"):format(
+        #results, pattern, namespaces))
     for i = 1, math.min(#results, 30) do chatLine(results[i]) end
+    if #unreadable > 0 then
+        msg(("|cffff8800%d namespace(s) could not be read|r: %s — a match could be hiding in there."):format(
+            #unreadable, table.concat(unreadable, ", ")))
+    end
     if #results > 30 then
         msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.api."):format(#results - 30))
     end
@@ -453,7 +504,7 @@ local function Help()
     chatLine("/sko map full   same, plus textures and fontstrings (bigger file)")
     chatLine("/sko grab [sec] capture the frame stack under the mouse (default 2s)")
     chatLine("/sko find <txt> search live frame names")
-    chatLine("/sko api <txt>  search _G — does this API exist in this build?")
+    chatLine("/sko api <txt>  search _G + C_* namespaces — does this API exist?")
     chatLine("/sko secret <api> [args]  does it return a SECRET? (works in combat)")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")
