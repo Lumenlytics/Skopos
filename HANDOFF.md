@@ -71,6 +71,17 @@ explicit keys to test anything outside it: `/sko attr <frame> <key> [key...]`.
 `probed` and `explicitKeys` exist to make an empty result readable: 0 found from 3
 explicit keys means something very different from 0 found across the whole list.
 
+⚠ **Virtual XML templates are invisible to every live-frame command here** — `attr`,
+`find`, `grab` and `map` alike. A `<Button virtual="true">` is a template, not an
+object: it never exists at runtime, and instances spawned from it are usually
+anonymous. Worked example, 2026-08-05: `/sko find QuickMenu` returned 0 while hunting
+ConsolePort's in-combat cancel-aura button, because the button is
+`<Button name="CPQMenuAura" ... virtual="true">` in
+`ConsolePort_World\View\QuickMenu\QuickMenu.xml`. **When a frame you can see in an
+addon's source does not appear here, check whether it is virtual before assuming the
+addon is unloaded** — and read the XML directly, which carries the attribute values
+anyway. (The parent addon being unloaded is the other cause; check both.)
+
 Secure snippet values (`_onclick`, `_onshow`, …) are stored up to 1000 chars rather
 than the 120 ordinary values get, because the snippet body *is* the payload worth
 reading — combat lockdown does not apply inside the restricted environment, so that

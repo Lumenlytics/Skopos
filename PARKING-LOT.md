@@ -89,7 +89,7 @@ that changed recently.
 
 ## 4. Five researched-but-unbuilt commands
 
-**Researched 2026-07-28.** Ranked by value. API existence was verified by counting
+**Researched 2026-08-04.** Ranked by value. API existence was verified by counting
 real usage across the 131 addons installed at `Interface\AddOns` — if oUF or Dominos
 calls it, it exists at build `120007`. Counts are that evidence, not guesses.
 
@@ -99,7 +99,7 @@ append-only `SkoposDB.<name>` log, render values as pipe-delimited strings, flus
 
 | Command | Answers | API evidence |
 |---|---|---|
-| ~~`/sko attr <frame>`~~ | ✅ **BUILT 2026-07-28, v1.4.0** | — |
+| ~~`/sko attr <frame>`~~ | ✅ **BUILT 2026-08-05, v1.4.0** | — |
 | `/sko scripts <frame>` | Which handlers are set. `OnUpdate` = perf smell, `OnClick` = interactive | `GetScript` 120, `HasScript` 6 |
 | `/sko events <sec>` | Sniff every event firing in a window — "what should I hook?" | `RegisterAllEvents` — **151 uses** |
 | `/sko addons` | Name/version/enabled/LoD/memory. Explains frame provenance: who made `DetailsBarra_1_5` | `C_AddOns.GetAddOnMetadata` 61 |
@@ -129,7 +129,8 @@ which is not proof of absence). `/sko api GetRaidProfile` now answers that itsel
 
 ## 5. RESOLVED — `/sko api` now descends into `C_*` namespaces
 
-**Found 2026-07-28, the hard way.** `/sko api GetSpellCooldown` returned `count = 0`
+**Found 2026-08-04, the hard way**, reading back the 2026-07-28 probe data.
+`/sko api GetSpellCooldown` had returned `count = 0`
 at build `120007`, which reads as "this API is gone" and is *not* what it means —
 `/sko api` sweeps `_G`'s own keys and never looks inside namespace tables, so
 `C_Spell.GetSpellCooldown` could never have appeared. The limitation is now documented
@@ -139,7 +140,7 @@ This bites hardest on exactly the APIs most worth asking about, since Blizzard h
 spent years migrating globals into `C_*` tables. A sweep that silently cannot see the
 modern half of the API surface is a sharp edge on the tool's primary use.
 
-**Resolved 2026-07-28 in v1.3.0.** Default-on, as suspected — no `deep` flag, because
+**Resolved 2026-08-04 in v1.3.0.** Default-on, as suspected — no `deep` flag, because
 the old default was quietly wrong and an opt-in fix leaves the trap armed. Matches
 against the full dotted name, so `GetSpellCooldown` finds `C_Spell.GetSpellCooldown`
 and `C_Spell` lists the namespace. Only C_* tables and name-matching keys get indexed,
