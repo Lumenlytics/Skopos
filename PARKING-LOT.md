@@ -99,17 +99,18 @@ append-only `SkoposDB.<name>` log, render values as pipe-delimited strings, flus
 
 | Command | Answers | API evidence |
 |---|---|---|
-| `/sko attr <frame>` | Secure attributes on a live frame. Serves P4.3 `destroytotem` and P4.8 header attrs, and lets you *study* a shipping in-combat `cancelaura` button instead of guessing | `GetAttribute` — **172 uses** |
+| ~~`/sko attr <frame>`~~ | ✅ **BUILT 2026-07-28, v1.4.0** | — |
 | `/sko scripts <frame>` | Which handlers are set. `OnUpdate` = perf smell, `OnClick` = interactive | `GetScript` 120, `HasScript` 6 |
 | `/sko events <sec>` | Sniff every event firing in a window — "what should I hook?" | `RegisterAllEvents` — **151 uses** |
 | `/sko addons` | Name/version/enabled/LoD/memory. Explains frame provenance: who made `DetailsBarra_1_5` | `C_AddOns.GetAddOnMetadata` 61 |
 | `/sko cvar <pattern>` | CVar sweep. Compact raid frame settings live here — directly relevant to Panoply's `Blizzard.lua` | `C_CVar.GetCVar` 35, `GetCVarInfo` 18 |
 
-⚠ **`/sko attr` has a keyspace problem worth knowing before starting it.** There is no
-"enumerate all attributes" call, so it must probe a known key list (`unit`, `type`,
-`type1`/`type2`, `action`, `spell`, `macrotext`, oUF and secure-header conventions).
-That makes it a best-effort dump, not a complete one — say so in its output rather
-than letting a caller read absence as proof.
+✅ **`/sko attr` shipped in v1.4.0.** The keyspace problem was real and is handled the
+way this note anticipated: 133 known keys probed, the output states plainly that
+absence is not proof, and explicit keys can be passed to test anything off the list.
+`probed` / `explicitKeys` are recorded so an empty result can be read correctly.
+Snippet bodies get a 1000-char cap against 120 for ordinary values, since the snippet
+is the actual payload worth reading.
 
 ### Deliberately NOT worth building — don't rediscover these
 

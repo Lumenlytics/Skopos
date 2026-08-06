@@ -4,12 +4,13 @@
 -- /sko find <text>  search live frame names
 -- /sko api <text>   search _G AND C_* namespaces (does this API exist in this build?)
 -- /sko secret <api> [args]  call an API, report whether its returns are SECRET
+-- /sko attr <frame> [key]   dump secure attributes + snippets on a live frame
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.3.0"
+local VERSION = "1.4.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -484,6 +485,121 @@ local function SecretProbe(input)
         inCombat and "|cffff8800IN COMBAT|r" or "Out of combat", #SkoposDB.secret))
 end
 
+-- There is NO "enumerate all attributes" call in the WoW API. GetAttribute answers
+-- one key at a time, so this probes a known list and is therefore a best-effort dump,
+-- never a complete one. An attribute missing from the output may simply be a key
+-- nobody thought to list — which is why the output says so, and why explicit keys can
+-- be passed to test anything outside the list.
+local ATTR_KEYS = {}
+do
+    local function add(t) for _, k in ipairs(t) do ATTR_KEYS[#ATTR_KEYS + 1] = k end end
+    -- SecureActionButtonTemplate: what a click actually does.
+    add({ "type", "unit", "action", "spell", "item", "macro", "macrotext", "target",
+          "toy", "flyout", "pet", "extra", "cancelaura", "index", "totem-slot",
+          "target-slot", "useparent-unit", "unitsuffix", "toggleForVehicle",
+          "allowVehicleTarget", "checkfocuscast", "checkselfcast", "harmbutton",
+          "helpbutton", "pressAndHoldAction", "ping-receiver", "typerelease" })
+    -- Numbered and modifier variants — a right-click cancelaura lives in type2.
+    for _, k in ipairs({ "type", "unit", "spell", "macrotext", "action" }) do
+        for i = 1, 5 do ATTR_KEYS[#ATTR_KEYS + 1] = k .. i end
+        for _, m in ipairs({ "shift-", "ctrl-", "alt-", "*" }) do
+            ATTR_KEYS[#ATTR_KEYS + 1] = m .. k .. "1"
+            ATTR_KEYS[#ATTR_KEYS + 1] = m .. k .. "2"
+        end
+    end
+    -- SecureGroupHeaderTemplate: how a raid/party header lays itself out.
+    add({ "showRaid", "showParty", "showPlayer", "showSolo", "groupFilter",
+          "roleFilter", "strictFiltering", "point", "xOffset", "yOffset",
+          "columnSpacing", "columnAnchorPoint", "maxColumns", "unitsPerColumn",
+          "startingIndex", "sortMethod", "sortDir", "template", "templateType",
+          "groupBy", "groupingOrder", "nameList", "useOwnerUnit", "filterOnPet",
+          "initialConfigFunction" })
+    -- Secure snippets: the restricted-environment code itself. These are the whole
+    -- reason this command is worth having — combat lockdown does not apply inside
+    -- them, so this is where an in-combat cancelaura implementation actually lives.
+    add({ "_onshow", "_onhide", "_onclick", "_onmousedown", "_onmouseup", "_onenter",
+          "_onleave", "_onattributechanged", "_onstate-unit", "_childupdate",
+          "_childupdate-unit", "_onreceivedrag", "_ondragstart" })
+    add({ "oUF-guessUnit", "oUF-headerType", "oUF-onlyProcessChildren" })
+end
+
+local function AttrProbe(input)
+    if not input or input == "" then
+        msg("Usage: /sko attr <frame> [key ...]")
+        chatLine("no keys = probe the built-in list; keys given = probe only those")
+        chatLine(("built-in list is %d keys — see the caveat in HANDOFF.md"):format(#ATTR_KEYS))
+        return
+    end
+    local name, rest = input:match("^(%S+)%s*(.-)%s*$")
+    local frame, err = resolvePath(name)
+    if not frame then
+        msg(("Cannot resolve '%s': %s"):format(name, err))
+        return
+    end
+    if type(frame) ~= "table" then
+        msg(("'%s' is a %s, not a frame."):format(name, type(frame)))
+        return
+    end
+    local okG, getAttr = pcall(indexGlobal, frame, "GetAttribute")
+    if not okG or type(getAttr) ~= "function" then
+        msg(("'%s' has no GetAttribute — not a Frame."):format(name))
+        return
+    end
+
+    local keys, explicit = ATTR_KEYS, false
+    if rest ~= "" then
+        keys, explicit = {}, true
+        for w in rest:gmatch("%S+") do keys[#keys + 1] = w end
+    end
+
+    local lines = {}
+    for _, key in ipairs(keys) do
+        local ok, v = pcall(getAttr, frame, key)
+        -- type(v) rather than v ~= nil: never compare a value that might be secret.
+        if ok and type(v) ~= "nil" then
+            local isSecret = (issecretvalue and issecretvalue(v)) and true or false
+            -- Snippet bodies ARE the payload worth reading; give them real room.
+            local cap = key:sub(1, 1) == "_" and 1000 or 120
+            lines[#lines + 1] = table.concat({ key, type(v),
+                isSecret and "SECRET" or "plain",
+                isSecret and "<secret>" or renderValue(v, cap) }, "|")
+        elseif not ok then
+            lines[#lines + 1] = key .. "|?|errored|<read failed>"
+        end
+    end
+
+    local fname = debugName(frame)
+    table.insert(SkoposDB.attrs, {
+        time = date("%Y-%m-%d %H:%M:%S"),
+        build = select(4, GetBuildInfo()),
+        query = input,
+        frame = fname,
+        objectType = safe(frame.GetObjectType, frame) or "?",
+        protected = safe(frame.IsProtected, frame) and true or false,
+        -- Recorded so a reader can weigh an empty result: 0 found out of 3 explicit
+        -- keys means something very different from 0 out of the whole built-in list.
+        probed = #keys,
+        explicitKeys = explicit,
+        found = #lines,
+        attrs = lines,
+    })
+
+    msg(("%s (%s) — %d attribute(s) set, %d key(s) probed:"):format(
+        fname, safe(frame.GetObjectType, frame) or "?", #lines, #keys))
+    for i = 1, math.min(#lines, 30) do
+        local line = lines[i]
+        chatLine(#line > 140 and (line:sub(1, 140) .. "…") or line)
+    end
+    if #lines > 30 then
+        msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.attrs."):format(#lines - 30))
+    end
+    if not explicit then
+        chatLine("|cff888888absence is NOT proof: no enumerate-attributes API exists, so")
+        chatLine("|cff888888this checks a known list only. /sko attr <frame> <key> to test one.|r")
+    end
+    msg(("Saved as attr probe #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.attrs))
+end
+
 local function Note(text)
     if not text or text == "" then
         msg("Usage: /sko note <text>")
@@ -506,6 +622,7 @@ local function Help()
     chatLine("/sko find <txt> search live frame names")
     chatLine("/sko api <txt>  search _G + C_* namespaces — does this API exist?")
     chatLine("/sko secret <api> [args]  does it return a SECRET? (works in combat)")
+    chatLine("/sko attr <frame> [key]   secure attributes + snippets on a frame")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")
     chatLine("Maps/grabs hit disk on /reload, at WTF\\...\\SavedVariables\\Skopos.lua")
@@ -527,6 +644,8 @@ SlashCmdList.SKOPOS = function(input)
         ApiProbe(rest)
     elseif cmd == "secret" then
         SecretProbe(rest)
+    elseif cmd == "attr" then
+        AttrProbe(rest)
     elseif cmd == "note" then
         Note(rest)
     elseif cmd == "clear" then
@@ -546,5 +665,6 @@ loader:SetScript("OnEvent", function(self, _, name)
     SkoposDB.picks = SkoposDB.picks or {}
     SkoposDB.api = SkoposDB.api or {}
     SkoposDB.secret = SkoposDB.secret or {}
+    SkoposDB.attrs = SkoposDB.attrs or {}
     msg("v" .. VERSION .. " loaded. /sko for commands.")
 end)

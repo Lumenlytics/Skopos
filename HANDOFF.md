@@ -28,7 +28,11 @@ screen and get its exact name and ancestry.
 4. For "does this API exist in this build": `/sko api <text>`, then `/reload`. The map
    covers widgets only — a function name will never appear in it, because
    `EnumerateFrames` walks frames and globals are not frames. This is the other half.
-5. For "can I do maths on what it returns": `/sko secret <API> [args]`, then `/reload`.
+5. For "how is this secure frame wired": `/sko attr <frame> [key ...]`, then `/reload`.
+   Dumps click types, unit bindings, header layout keys and — most usefully — the
+   secure snippet bodies, which is how to *study* a working in-combat implementation
+   instead of guessing at one.
+6. For "can I do maths on what it returns": `/sko secret <API> [args]`, then `/reload`.
    Existence is rarely the real question on Midnight — secrecy is, because it decides
    whether a feature is cheap or needs an engine-side workaround. Run each probe
    **twice, in and out of combat**, since that is frequently where the answer changes.
@@ -51,6 +55,27 @@ debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
 
 `SkoposDB.map.meta` has timestamp, client build, resolution, UI scale, counts, and
 this format string. `SkoposDB.picks` is an array of grabs: `{time, stack, ancestry, note?}`.
+
+`SkoposDB.attrs` (v1.4.0+) is an append-only log of `/sko attr` dumps:
+`{time, build, query, frame, objectType, protected, probed, explicitKeys, found, attrs}`,
+where `attrs` is an array of `key|luaType|SECRET-or-plain|value` strings. A key whose
+read errored is recorded as `key|?|errored|<read failed>` rather than dropped.
+
+⚠ **This is a best-effort dump, NOT a complete one.** There is no enumerate-attributes
+call in the WoW API — `GetAttribute` answers one key at a time — so the command probes
+a built-in list of 133 known keys (SecureActionButton types and their modifier/numeric
+variants, SecureGroupHeader layout keys, secure snippets, oUF conventions). **An
+attribute absent from the output may simply be a key nobody thought to list.** Pass
+explicit keys to test anything outside it: `/sko attr <frame> <key> [key...]`.
+
+`probed` and `explicitKeys` exist to make an empty result readable: 0 found from 3
+explicit keys means something very different from 0 found across the whole list.
+
+Secure snippet values (`_onclick`, `_onshow`, …) are stored up to 1000 chars rather
+than the 120 ordinary values get, because the snippet body *is* the payload worth
+reading — combat lockdown does not apply inside the restricted environment, so that
+is where an in-combat implementation actually lives. Chat truncates at 140; read the
+full text from disk.
 
 `SkoposDB.secret` (v1.2.0+) is an append-only log of `/sko secret` probes:
 `{time, build, query, inCombat, anySecret, errored, returns}`, where `returns` is an

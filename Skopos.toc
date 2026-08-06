@@ -3,7 +3,7 @@
 ## Category: Development Tools
 ## Notes: Frame cartographer — maps the whole UI frame tree to SavedVariables, grabs frames under the mouse. /sko
 ## Author: Ryrin
-## Version: 1.3.0
+## Version: 1.4.0
 ## SavedVariables: SkoposDB
 ## X-Website: https://github.com/Lumenlytics/Skopos
 ## X-License: GPL-3.0-or-later
