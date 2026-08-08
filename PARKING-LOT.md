@@ -5,7 +5,7 @@ the conversation that produced it.
 
 ---
 
-## 1. The map on disk is from 2026-07-24, not fresh
+## 1. RESOLVED — the map on disk was from 2026-07-24, not fresh
 
 **Found:** 2026-07-28, while catching up after a chat was deleted.
 
@@ -18,12 +18,35 @@ Consequence: the map predates the 07-26 repo move and anything that changed in t
 addon setup since. 28,854 frames is still a lot of real data, so this may not matter —
 but don't assume it reflects today's UI.
 
-**To resolve:** `/sko map` (or `/sko map full`), then `/reload`. Confirm `meta.when`
-shows the new date before trusting it.
+Side note: `meta.version` read `1.0.0` while the `.toc` said `1.0.1`. Not a bug — the
+map was taken at 23:15 and the version bump committed at 23:16, so the stamp was
+honest about the build that produced it.
 
-Side note: `meta.version` reads `1.0.0` while the `.toc` says `1.0.1`. Not a bug —
-the map was taken at 23:15 and the version bump committed at 23:16, so the stamp is
-honest about the build that produced it. A re-map will stamp 1.0.1.
+**Resolved 2026-08-07.** Marshall re-mapped and reloaded; verified against the live
+SavedVariables rather than taken on report:
+
+| | old map | current map |
+|---|---|---|
+| `meta.when` | 2026-07-24 23:15:24 | **2026-08-07 21:21:28** |
+| `meta.version` | 1.0.0 | **1.4.0** |
+| frames | 28,854 | 26,893 |
+| visible (`V`) | 992 | 1,019 |
+| forbidden (`F`) | 0 | 0 |
+| secret-degraded (`?` size) | 23 | 27 |
+
+⚠ The new map has **~1,900 fewer frames** than the old one. That is expected, not a
+truncated map: frames are created lazily, so a session where fewer panels have been
+opened enumerates fewer of them. It does mean a map is a snapshot of *what has been
+opened*, not of everything that could exist — if a Blizzard frame you expect is
+missing, open its panel once and re-map before concluding it is gone.
+
+The append-only `api`, `secret` and `attrs` logs all survived the re-map intact;
+`/sko map` replaces `SkoposDB.map` only.
+
+**Lesson worth keeping:** this item sat open through three sessions, and twice a
+re-map was reported as done when the file showed otherwise — the giveaway both times
+was `meta.when` being unchanged while the file mtime moved, which is a logout flush
+re-serializing old data. Always check `meta.when`, never the file timestamp.
 
 ---
 
