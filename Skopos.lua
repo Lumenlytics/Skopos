@@ -5,12 +5,13 @@
 -- /sko api <text>   search _G AND C_* namespaces (does this API exist in this build?)
 -- /sko secret <api> [args]  call an API, report whether its returns are SECRET
 -- /sko attr <frame> [key]   dump secure attributes + snippets on a live frame
+-- /sko events [sec]  register ALL events for a window, report what actually fired
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.4.0"
+local VERSION = "1.5.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -600,6 +601,97 @@ local function AttrProbe(input)
     msg(("Saved as attr probe #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.attrs))
 end
 
+-- Records the shape of an event's payload on its FIRST sighting only. Doing this on
+-- every firing would be the expensive part of a sniff — COMBAT_LOG_EVENT_UNFILTERED
+-- alone can fire hundreds of times a second — while counting is just an increment.
+local function describeArgs(...)
+    local n = select("#", ...)
+    if n == 0 then return "" end
+    local parts = {}
+    for i = 1, math.min(n, 6) do
+        local v = select(i, ...)
+        if issecretvalue and issecretvalue(v) then
+            parts[#parts + 1] = "secret"
+        else
+            local t = type(v)
+            if t == "string" or t == "number" or t == "boolean" then
+                parts[#parts + 1] = t .. ":" .. renderValue(v, 24)
+            else
+                parts[#parts + 1] = t
+            end
+        end
+    end
+    if n > 6 then parts[#parts + 1] = ("+%d more"):format(n - 6) end
+    return table.concat(parts, ",")
+end
+
+local sniffFrame, sniffActive
+
+-- The map answers "which frame", /sko api "does it exist", /sko secret "can I do
+-- maths on it". This answers the fourth question no static inspection can: "what
+-- should I hook?" RegisterAllEvents for a window, then report what actually fired.
+local function EventSniff(seconds)
+    if sniffActive then
+        msg("A sniff is already running — let it finish first.")
+        return
+    end
+    local dur = tonumber(seconds) or 5
+    -- Clamped deliberately: this registers EVERY event, so a mistyped 600 would leave
+    -- the firehose open for ten minutes.
+    if dur < 1 then dur = 1 elseif dur > 30 then dur = 30 end
+
+    sniffFrame = sniffFrame or CreateFrame("Frame")
+    local counts, order, args, total = {}, {}, {}, 0
+
+    sniffFrame:SetScript("OnEvent", function(_, event, ...)
+        total = total + 1
+        if not counts[event] then
+            counts[event] = 0
+            order[#order + 1] = event
+            args[event] = describeArgs(...)
+        end
+        counts[event] = counts[event] + 1
+    end)
+    sniffFrame:RegisterAllEvents()
+    sniffActive = true
+    msg(("Sniffing ALL events for %d second(s) — go do the thing you want to trace."):format(dur))
+
+    C_Timer.After(dur, function()
+        sniffFrame:UnregisterAllEvents()
+        sniffFrame:SetScript("OnEvent", nil)
+        sniffActive = false
+
+        -- Frequency order, not alphabetical: "what fired most" is the question being
+        -- asked, and the one-shot event you are hunting is usually at the bottom.
+        table.sort(order, function(a, b)
+            if counts[a] ~= counts[b] then return counts[a] > counts[b] end
+            return a < b
+        end)
+
+        local lines = {}
+        for i, event in ipairs(order) do
+            lines[i] = table.concat({ event, counts[event], args[event] or "" }, "|")
+        end
+
+        table.insert(SkoposDB.events, {
+            time = date("%Y-%m-%d %H:%M:%S"),
+            build = select(4, GetBuildInfo()),
+            seconds = dur,
+            inCombat = InCombatLockdown() and true or false,
+            distinct = #order,
+            total = total,
+            events = lines,
+        })
+
+        msg(("%d distinct event(s), %d firing(s) in %ds:"):format(#order, total, dur))
+        for i = 1, math.min(#lines, 30) do chatLine(lines[i]) end
+        if #lines > 30 then
+            msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.events."):format(#lines - 30))
+        end
+        msg(("Saved as event sniff #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.events))
+    end)
+end
+
 local function Note(text)
     if not text or text == "" then
         msg("Usage: /sko note <text>")
@@ -623,6 +715,7 @@ local function Help()
     chatLine("/sko api <txt>  search _G + C_* namespaces — does this API exist?")
     chatLine("/sko secret <api> [args]  does it return a SECRET? (works in combat)")
     chatLine("/sko attr <frame> [key]   secure attributes + snippets on a frame")
+    chatLine("/sko events [sec]  what events fire in a window? (default 5s, max 30)")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")
     chatLine("Maps/grabs hit disk on /reload, at WTF\\...\\SavedVariables\\Skopos.lua")
@@ -646,6 +739,8 @@ SlashCmdList.SKOPOS = function(input)
         SecretProbe(rest)
     elseif cmd == "attr" then
         AttrProbe(rest)
+    elseif cmd == "events" then
+        EventSniff(rest)
     elseif cmd == "note" then
         Note(rest)
     elseif cmd == "clear" then
@@ -666,5 +761,6 @@ loader:SetScript("OnEvent", function(self, _, name)
     SkoposDB.api = SkoposDB.api or {}
     SkoposDB.secret = SkoposDB.secret or {}
     SkoposDB.attrs = SkoposDB.attrs or {}
+    SkoposDB.events = SkoposDB.events or {}
     msg("v" .. VERSION .. " loaded. /sko for commands.")
 end)

@@ -28,11 +28,14 @@ screen and get its exact name and ancestry.
 4. For "does this API exist in this build": `/sko api <text>`, then `/reload`. The map
    covers widgets only — a function name will never appear in it, because
    `EnumerateFrames` walks frames and globals are not frames. This is the other half.
-5. For "how is this secure frame wired": `/sko attr <frame> [key ...]`, then `/reload`.
+5. For "what should I hook": `/sko events [sec]`, then do the thing you want to trace
+   during the window, then `/reload`. No static inspection can answer this — it is the
+   only command here that observes behaviour over time rather than state at an instant.
+6. For "how is this secure frame wired": `/sko attr <frame> [key ...]`, then `/reload`.
    Dumps click types, unit bindings, header layout keys and — most usefully — the
    secure snippet bodies, which is how to *study* a working in-combat implementation
    instead of guessing at one.
-6. For "can I do maths on what it returns": `/sko secret <API> [args]`, then `/reload`.
+7. For "can I do maths on what it returns": `/sko secret <API> [args]`, then `/reload`.
    Existence is rarely the real question on Midnight — secrecy is, because it decides
    whether a feature is cheap or needs an engine-side workaround. Run each probe
    **twice, in and out of combat**, since that is frequently where the answer changes.
@@ -55,6 +58,22 @@ debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
 
 `SkoposDB.map.meta` has timestamp, client build, resolution, UI scale, counts, and
 this format string. `SkoposDB.picks` is an array of grabs: `{time, stack, ancestry, note?}`.
+
+`SkoposDB.events` (v1.5.0+) is an append-only log of `/sko events` sniffs:
+`{time, build, seconds, inCombat, distinct, total, events}`, where `events` is an
+array of `EVENT_NAME|count|argSignature` strings **sorted by count descending**.
+Frequency order is deliberate — the one-shot event you are hunting is usually at the
+bottom, under the noise.
+
+The arg signature is captured on an event's **first sighting only** (`string:player,
+number:6552`, or `secret` for a secret-marked arg, capped at 6 args). Capturing every
+firing would be the expensive part; counting is just an increment, and
+`COMBAT_LOG_EVENT_UNFILTERED` alone can fire hundreds of times a second.
+
+Duration defaults to 5s and is **clamped to 1–30**, because this calls
+`RegisterAllEvents` — a mistyped `600` would otherwise hold the firehose open for ten
+minutes. Only one sniff runs at a time; a second call while one is live is refused.
+An empty result is still recorded: "nothing fired in that window" is a real answer.
 
 `SkoposDB.attrs` (v1.4.0+) is an append-only log of `/sko attr` dumps:
 `{time, build, query, frame, objectType, protected, probed, explicitKeys, found, attrs}`,

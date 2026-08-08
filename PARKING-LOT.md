@@ -124,7 +124,7 @@ append-only `SkoposDB.<name>` log, render values as pipe-delimited strings, flus
 |---|---|---|
 | ~~`/sko attr <frame>`~~ | ✅ **BUILT 2026-08-05, v1.4.0** | — |
 | `/sko scripts <frame>` | Which handlers are set. `OnUpdate` = perf smell, `OnClick` = interactive | `GetScript` 120, `HasScript` 6 |
-| `/sko events <sec>` | Sniff every event firing in a window — "what should I hook?" | `RegisterAllEvents` — **151 uses** |
+| ~~`/sko events <sec>`~~ | ✅ **BUILT 2026-08-07, v1.5.0** | — |
 | `/sko addons` | Name/version/enabled/LoD/memory. Explains frame provenance: who made `DetailsBarra_1_5` | `C_AddOns.GetAddOnMetadata` 61 |
 | `/sko cvar <pattern>` | CVar sweep. Compact raid frame settings live here — directly relevant to Panoply's `Blizzard.lua` | `C_CVar.GetCVar` 35, `GetCVarInfo` 18 |
 
