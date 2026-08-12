@@ -5,6 +5,22 @@ the entire live UI frame tree to SavedVariables so Claude can grep it from disk,
 and grabs the frame stack under the mouse so Marshall can point at a thing on
 screen and get its exact name and ancestry.
 
+## Shared references — read at session start
+
+**Read `C:\Users\Marshall Sisler\Projects\WoW\SHARED-REFERENCES.md` at session start.**
+It indexes the Midnight knowledge base and the other shared docs. **Reading shared
+references is expected, not a lane violation** — the one-chat-per-addon rule restricts
+writing, never reading.
+
+This section exists because of a failure this addon caused. Skopos spent several
+sessions measuring secrecy behaviour empirically that `C_Secrets.ShouldUnitPowerBeSecret`
+and `GetPowerTypeSecrecy` answer outright — both documented in the knowledge base the
+whole time. The knowledge was never missing; the pointer from here to it was.
+
+⛔ Cite `Projects\WoW\WoW-Midnight-Addon-Dev-KnowledgeBase.md` only. The copy under
+`AbilityMap\_project\knowledge\` is a pre-12.1 archive and now carries a DO-NOT-CITE
+banner.
+
 ## Status
 
 - v1.0.1 **FULLY VERIFIED in-game** 2026-07-24: map = 28,854 frames, 4.9 MB, zero
