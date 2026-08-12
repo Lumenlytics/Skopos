@@ -169,9 +169,9 @@ append-only `SkoposDB.<name>` log, render values as pipe-delimited strings, flus
 
 | Command | Answers | API evidence |
 |---|---|---|
-| ~~`/sko attr <frame>`~~ | ✅ **BUILT 2026-08-05, v1.4.0** | — |
+| ~~`/sko attr <frame>`~~ | ✅ **BUILT v1.4.0 · `@last` v1.7.0 · LIVE-VERIFIED 2026-08-11** | — |
 | `/sko scripts <frame>` | Which handlers are set. `OnUpdate` = perf smell, `OnClick` = interactive | `GetScript` 120, `HasScript` 6 |
-| ~~`/sko events <sec>`~~ | ✅ **BUILT 2026-08-07, v1.5.0** | — |
+| ~~`/sko events <sec>`~~ | ✅ **BUILT v1.5.0 · LIVE-VERIFIED 2026-08-11** | — |
 | `/sko addons` | Name/version/enabled/LoD/memory. Explains frame provenance: who made `DetailsBarra_1_5` | `C_AddOns.GetAddOnMetadata` 61 |
 | `/sko cvar <pattern>` | CVar sweep. Compact raid frame settings live here — directly relevant to Panoply's `Blizzard.lua` | `C_CVar.GetCVar` 35, `GetCVarInfo` 18 |
 
@@ -225,6 +225,36 @@ property the fix existed to create. Unreadable namespaces are now a separate
 
 ⚠ **Still one level deep only** (`C_Foo.Bar`, never `C_Foo.Bar.Baz`). No known case
 needs deeper today; revisit if one appears.
+
+---
+
+## 6. Investigate the `C_Secrets` namespace
+
+**Found 2026-08-11**, incidentally, in the first live `/sko api` sweep on 12.1:
+
+```
+C_Secrets.GetSpellCooldownSecrecy|function
+C_Spell.GetSpellCooldownDuration|function
+C_Spell.GetSpellCooldown|function
+```
+
+12.1 ships a `C_Secrets` namespace, and at least one of its functions reports **whether
+a value is secret** rather than requiring you to call an API and inspect what comes back
+— which is exactly how `/sko secret` works today.
+
+This matters because the empirical approach has a real blind spot: it can only report
+secrecy for the specific call and context it just made. The 12.1 map showed secrecy is
+marked **per API** (only 36 of 16,080 unreadable-visibility rows also had secret
+geometry), so one probe genuinely tells you nothing about the next. A direct query would
+replace inference with fact.
+
+**To resolve:** `/sko api C_Secrets` enumerates the namespace — one command, whole
+surface. Then decide whether `/sko secret` should consult it, either alongside the
+empirical probe (report both, flag disagreement) or in place of it.
+
+⚠ Don't assume it is broadly useful before seeing it. The one function observed is
+spell-cooldown-specific, so this may be a narrow helper rather than a general secrecy
+oracle. Enumerate first, design second.
 
 ---
 

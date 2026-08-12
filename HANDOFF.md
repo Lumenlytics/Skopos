@@ -157,12 +157,16 @@ An empty result is still recorded: "nothing fired in that window" is a real answ
 where `attrs` is an array of `key|luaType|SECRET-or-plain|value` strings. A key whose
 read errored is recorded as `key|?|errored|<read failed>` rather than dropped.
 
-⚠ **`/sko attr <name>` only reaches NAMED globals — and most of 12.1's aura tree is
-anonymous.** An aura button's debugName looks like
-`UIParent.279f75b2f70.DebuffDisplay.279f75b4140`, whose segments are runtime addresses,
-not table keys, so `resolvePath` can never walk to it. `BuffDisplay` is not a global at
-all; it only ever appears as a path segment. Verified 2026-08-11 against the live 12.1
-map — there is no top-level frame by that name.
+⚠ **`/sko attr <name>` only reaches NAMED globals, and aura LEAF buttons are anonymous.**
+A leaf's debugName ends in a runtime address — `BuffFrame.AuraContainer.279331b6420`,
+or fully anonymous as `UIParent.279f75b2f70.DebuffDisplay.279f75b4140` — and an address
+is not a table key, so `resolvePath` cannot walk to it.
+
+Correction to an earlier version of this note, which said the whole aura tree is
+anonymous: **it is not.** `BuffFrame.AuraContainer` is a real path (global `BuffFrame`,
+parentKey `AuraContainer`) and resolves fine. Only the pooled leaf buttons are
+anonymous. `BuffDisplay`, however, is genuinely not a global — it appears solely as a
+path segment, verified against the live 12.1 map.
 
 **Use `/sko attr @last` instead** (v1.7.0+): `/sko grab 3`, hover the thing, then
 `/sko attr @last` dumps attributes for the frame that grab captured. Hovering is the
@@ -264,6 +268,42 @@ that a standing memory made it permanently authoritative, rather than re-reading
 memory — which by then said the opposite. The work was correct and Marshall has since
 ratified, but the ordering was wrong, and the protocol above exists precisely to
 prevent that. Read the memory, not a message's summary of it.
+
+## Live verification status — build 120100, 2026-08-11
+
+Every command has now been exercised against the live 12.1 client. Nothing in the
+toolset is unverified any more.
+
+| Command | Live result |
+|---|---|
+| `/sko map` | 45,437 frames, `unreadableVis = 16080` |
+| `/sko map full` | 152,415 lines, regions confirmed carrying the same partitioning |
+| `/sko grab` | `BuffFrame.AuraContainer.279331b6420` with full ancestry |
+| `/sko api` | **C_\* descent works**: 258 namespaces swept, `unreadable` empty |
+| `/sko attr @last` | resolved the anonymous leaf grab captured — `found = 0` of 133 |
+| `/sko events` | 5s window, 6 distinct / 12 firings, frequency-sorted, args captured |
+| `/sko secret` | verified at v1.2.0 (pre-patch); **not re-run since 12.1** |
+
+Two findings worth carrying forward:
+
+**Blizzard's 12.1 aura buttons carry no secure attributes.** `/sko attr @last` on one
+probed all 133 known keys and found **zero**, with `protected = false`. They are not
+SecureActionButtons — no `type2`, no `cancelaura`. Whatever handles right-click cancel
+now, it is not the attribute route. (Absence across a known-key list is not proof, but
+`protected = false` corroborates it.)
+
+**`C_Secrets` exists.** `/sko api GetSpellCooldown` returned three hits at `120100`:
+
+```
+C_Secrets.GetSpellCooldownSecrecy|function
+C_Spell.GetSpellCooldownDuration|function
+C_Spell.GetSpellCooldown|function
+```
+
+A whole `C_Secrets` namespace, with at least one function that reports **whether a
+value is secret** rather than making you find out empirically. `/sko secret` currently
+answers that question by calling an API and inspecting what comes back; if `C_Secrets`
+exposes it directly, that is a better mechanism. See PARKING-LOT item 6.
 
 ## Design constraints (Midnight KB)
 
