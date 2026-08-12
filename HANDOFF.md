@@ -51,10 +51,44 @@ reload afterward is invisible to Claude.
 debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
 ```
 
-- `vis`: `V` visible, `S` shown but an ancestor is hidden, `H` hidden
+- `vis`: `V` visible, `S` shown but an ancestor is hidden, `H` hidden,
+  **`?` visibility unreadable — secret or errored. NOT the same as hidden.**
 - `anchor`: `POINT->RelativeName:RELPOINT(x,y)`, `+N` = N more anchor points
 - `flags`: `P` protected, `M` mouse-enabled, `F` forbidden (row is otherwise `?`s),
-  `R` region row (col 6 is then drawLayer:sublevel, col 7 is atlas/tex/text)
+  `R` region row (col 6 is then drawLayer:sublevel, col 7 is atlas/tex/text),
+  `U` forbidden state unreadable — the row was gathered anyway (everything is
+  pcall-guarded) but trust it less than an ordinary row
+
+## 12.1 walker secrecy guards (v1.6.0)
+
+12.1 ships Forbidden Partition objects: `AuraButton`s whose `IsShown()` returns a
+**secret**, plus new object types (`ManagedAuraContainer`, `VectorGraphics`). Blizzard's
+own Target Frame runs a `ManagedAuraContainer`, so even mapping the default UI
+exercises these paths.
+
+Skopos never risked *crashing* on them — every widget read has gone through `safe()`
+since v1.0.1. The actual defect was quieter and worse:
+
+```lua
+-- before v1.6.0
+if safe(f.IsVisible, f) then vis = "V"
+elseif safe(f.IsShown, f) then vis = "S"
+else vis = "H" end
+```
+
+`safe()` scrubs a secret to `nil`, so a secret `IsShown()` fell through to **`H`** —
+recording the frame as *definitely hidden*, indistinguishable from a genuine hide. The
+map didn't fail; it lied, and nothing in the output said so.
+
+The fix rests on a distinction `safe()` already preserved but the old code discarded:
+it returns `nil` for "errored or secret" but a real `false` for a definite negative.
+`visibility()` now checks for `nil` explicitly and emits `?`, and **only ever reports a
+definite answer when it actually got one**.
+
+`meta.unreadableVis` and `meta.unknownForbidden` count the degraded rows, and `/sko map`
+prints them when non-zero. A build that used to report zero and suddenly doesn't is the
+signal that a patch changed what the walker is allowed to see — which is precisely how
+this class of problem should announce itself, rather than by silently mislabelling rows.
 
 `SkoposDB.map.meta` has timestamp, client build, resolution, UI scale, counts, and
 this format string. `SkoposDB.picks` is an array of grabs: `{time, stack, ancestry, note?}`.

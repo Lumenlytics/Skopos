@@ -11,13 +11,15 @@
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.5.0"
+local VERSION = "1.6.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
---   vis:    V visible, S shown-but-parent-hidden, H hidden
+--   vis:    V visible, S shown-but-parent-hidden, H hidden,
+--           ? visibility UNREADABLE (secret or errored) — not the same as hidden
 --   anchor: POINT->RelativeName:RELPOINT(x,y)  (+N = additional points)
---   flags:  P protected, M mouse-enabled, F forbidden, R region (layer:sublevel in col 6)
+--   flags:  P protected, M mouse-enabled, F forbidden, R region (layer:sublevel in col 6),
+--           U forbidden-state unreadable (row gathered anyway, trust it less)
 local LINE_FORMAT = "debugName|objectType|parent|vis|WxH|strata:level|anchor|flags"
 
 local function msg(text)
@@ -43,6 +45,32 @@ local function safe(fn, ...)
     local ok, a, b, c, d, e = pcall(fn, ...)
     if not ok then return nil end
     return scrub(a), scrub(b), scrub(c), scrub(d), scrub(e)
+end
+
+-- Degradation counters for the current map, reset by BuildMap and written into meta.
+-- Silent degradation is the enemy: a map that quietly guesses is worse than one that
+-- admits what it could not read.
+local mapStats = { unreadableVis = 0, unknownForbidden = 0 }
+
+-- safe() returns nil for BOTH "the read errored" and "the value was secret", but a
+-- real `false` for a definite negative. That distinction carries the whole fix here:
+-- 12.1's Forbidden Partition objects hand back a SECRET IsShown(), and the old code
+-- folded that into "H" — recording a frame as definitely hidden when its visibility
+-- is simply unknowable. Never launder an unreadable value into a definite answer.
+local function visibility(obj)
+    local visible = safe(obj.IsVisible, obj)
+    if visible == true then return "V" end
+    if visible == nil then
+        mapStats.unreadableVis = mapStats.unreadableVis + 1
+        return "?"
+    end
+    local shown = safe(obj.IsShown, obj)
+    if shown == true then return "S" end
+    if shown == nil then
+        mapStats.unreadableVis = mapStats.unreadableVis + 1
+        return "?"
+    end
+    return "H"
 end
 
 local function round(n)
@@ -74,17 +102,15 @@ local function describeAnchor(f, parentName)
 end
 
 local function describeFrame(f)
-    if safe(f.IsForbidden, f) then
+    local forbidden = safe(f.IsForbidden, f)
+    if forbidden then
         return debugName(f) .. "|?|?|?|?|?|?|F"
     end
     local name = debugName(f)
     local otype = safe(f.GetObjectType, f) or "?"
     local parent = safe(f.GetParent, f)
     local parentName = parent and debugName(parent) or ""
-    local vis
-    if safe(f.IsVisible, f) then vis = "V"
-    elseif safe(f.IsShown, f) then vis = "S"
-    else vis = "H" end
+    local vis = visibility(f)
     local w, h = safe(f.GetSize, f)
     local size = (w and h) and (round(w) .. "x" .. round(h)) or "?"
     local strata = safe(f.GetFrameStrata, f) or "?"
@@ -92,6 +118,13 @@ local function describeFrame(f)
     local flags = ""
     if safe(f.IsProtected, f) then flags = flags .. "P" end
     if safe(f.IsMouseEnabled, f) then flags = flags .. "M" end
+    -- IsForbidden itself came back unreadable. Everything below is pcall-guarded so
+    -- the row is still worth having, but the caller must know it is not trustworthy
+    -- the way an ordinary row is.
+    if forbidden == nil then
+        mapStats.unknownForbidden = mapStats.unknownForbidden + 1
+        flags = flags .. "U"
+    end
     return table.concat({
         name, otype, parentName, vis, size,
         strata .. ":" .. level,
@@ -103,10 +136,7 @@ end
 local function describeRegion(r, parentName)
     local name = debugName(r)
     local otype = safe(r.GetObjectType, r) or "?"
-    local vis
-    if safe(r.IsVisible, r) then vis = "V"
-    elseif safe(r.IsShown, r) then vis = "S"
-    else vis = "H" end
+    local vis = visibility(r)
     local w, h = safe(r.GetSize, r)
     local size = (w and h) and (round(w) .. "x" .. round(h)) or "?"
     local layer, sublevel = safe(r.GetDrawLayer, r)
@@ -175,6 +205,7 @@ local function BuildMap(includeRegions)
     end
     local lines = {}
     local frameCount = 0
+    mapStats.unreadableVis, mapStats.unknownForbidden = 0, 0
     eachFrame(function(f)
         frameCount = frameCount + 1
         lines[#lines + 1] = describeFrame(f)
@@ -194,11 +225,20 @@ local function BuildMap(includeRegions)
             lineCount = #lines,
             includesRegions = includeRegions or false,
             format = LINE_FORMAT,
+            -- Degradation is reported, never hidden. A high unreadableVis on a build
+            -- that used to report zero is the signal that a patch changed what the
+            -- walker is allowed to see.
+            unreadableVis = mapStats.unreadableVis,
+            unknownForbidden = mapStats.unknownForbidden,
         },
         frames = lines,
     }
     msg(("Mapped %d frames (%d lines%s)."):format(
         frameCount, #lines, includeRegions and ", regions included" or ""))
+    if mapStats.unreadableVis > 0 or mapStats.unknownForbidden > 0 then
+        msg(("|cffff8800%d row(s) with unreadable visibility, %d with unknown forbidden state.|r"):format(
+            mapStats.unreadableVis, mapStats.unknownForbidden))
+    end
     msg("|cffffcc00/reload|r to flush the map to SavedVariables\\Skopos.lua.")
 end
 
