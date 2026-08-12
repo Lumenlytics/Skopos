@@ -249,8 +249,7 @@ geometry), so one probe genuinely tells you nothing about the next. A direct que
 replace inference with fact.
 
 **The namespace is already documented — and by Marshall.**
-`Projects\WoW\AbilityMap\_project\knowledge\WoW-Midnight-Addon-Dev-KnowledgeBase.md`
-§2.3 lists the family:
+`Projects\WoW\WoW-Midnight-Addon-Dev-KnowledgeBase.md` §2.3 lists the family:
 
 ```
 C_Secrets.HasSecretRestrictions, ShouldUnitHealthMaxBeSecret,
@@ -268,6 +267,14 @@ Krito's own `Probe.lua` already probes three of these.
 (the KB is research, the sweep is ground truth). Then decide whether `/sko secret`
 consults it — most likely reporting both the policy answer and the empirical one, and
 flagging any disagreement, since the two answer subtly different questions.
+
+⚠ **Cite the right knowledge base — there are two and they have diverged.**
+`Projects\WoW\WoW-Midnight-Addon-Dev-KnowledgeBase.md` (59 KB, current through
+2026-08-11) is the live one. `AbilityMap\_project\knowledge\` holds a 44 KB snapshot
+frozen 2026-07-19 that is missing the 12.1 aura directionality policy, the widened
+identity-secret list and the Lua-error behaviour of secret aura reads — a chat reading
+it will draw 12.1 conclusions from pre-12.1 material. An earlier version of this item
+cited the stale one.
 
 ⚠ **Wider lesson, worth more than the feature:** several sessions went into measuring
 secrecy empirically when `ShouldUnitPowerBeSecret` and `GetPowerTypeSecrecy` were sitting
