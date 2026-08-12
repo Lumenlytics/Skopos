@@ -61,10 +61,37 @@ debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
 
 ## 12.1 walker secrecy guards (v1.6.0)
 
-12.1 ships Forbidden Partition objects: `AuraButton`s whose `IsShown()` returns a
-**secret**, plus new object types (`ManagedAuraContainer`, `VectorGraphics`). Blizzard's
-own Target Frame runs a `ManagedAuraContainer`, so even mapping the default UI
-exercises these paths.
+**LIVE-VERIFIED 2026-08-11 against build `120100`** (map `when = 2026-08-11 22:05:40`,
+`version = 1.6.0`). The fix earns its keep immediately: **16,080 of 45,437 rows — 35% of
+the map — came back `?`.** Under the old walker every one of those would have been
+silently written `H`, i.e. "definitely hidden". A third of the map would have been a lie.
+
+What 12.1 actually did, as opposed to what was predicted:
+
+| Predicted | Actually observed |
+|---|---|
+| new object types `ManagedAuraContainer`, `VectorGraphics` | **Neither exists anywhere in the map** (31 distinct types, no new ones) |
+| secrecy on `AuraButton`s | secrecy on ordinary `Frame` / `Button` / `Cooldown` widgets |
+| Target Frame runs a `ManagedAuraContainer` | the carriers are Blizzard's new **`BuffDisplay`** (13,440 rows) and **`DebuffDisplay`** (6,720 rows) trees |
+
+So the relay was right in substance — 12.1 does partition aura visibility — and wrong in
+every specific. **Do not go looking for those type names; they are not there.** The
+guards work because they are type-agnostic, keying off what a read returns rather than
+what an object claims to be.
+
+Anatomy of an affected row: an anonymous button under a `BuffDisplay`/`DebuffDisplay`
+container, with `TextsContainer` (4,002), `Cooldown` (4,000) and `Dispel` (4,000)
+children. `Dispel` as an engine-side widget is itself notable — dispel type is secret
+on Midnight, so Blizzard now ships the highlight rather than exposing the data.
+
+⚠ **Secrecy here is per-API, not per-object.** Only **36** of the 16,080 `?` rows also
+had secret geometry — the other 16,044 report exact sizes and anchors while their
+visibility is unreadable. Do not assume that one unreadable API on an object means the
+rest are unreadable; probe each one.
+
+These frames are **Blizzard's, not Muster's**, despite `Dispel` matching a Muster
+filename — checked against Muster's source, which contains no `TextsContainer`,
+`DebuffDisplay` or `.Dispel` symbol. Muster contributes 236 frames to the map.
 
 Skopos never risked *crashing* on them — every widget read has gone through `safe()`
 since v1.0.1. The actual defect was quieter and worse:

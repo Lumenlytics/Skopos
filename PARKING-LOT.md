@@ -5,7 +5,27 @@ the conversation that produced it.
 
 ---
 
-## 1. REOPENED 2026-08-11 — the map is a PATCH behind, not just days
+## 1. RESOLVED 2026-08-11 (2nd time) — 12.1 map taken, and it validated v1.6.0
+
+Re-mapped on the live 12.1 client and verified from the file, not from report:
+`meta.build = 120100`, `meta.version = 1.6.0`, `when = 2026-08-11 22:05:40`,
+45,437 frames (up from 26,893 — Blizzard's new aura trees account for most of it).
+
+**`unreadableVis = 16080`** — non-zero for the first time ever, and 35% of the map.
+Every one of those rows would have been silently recorded `H` by the pre-1.6.0 walker.
+`unknownForbidden = 0`, so `IsForbidden` itself still reads cleanly.
+
+Vis distribution: `S` 17,151 · `?` 16,080 · `H` 11,257 · `V` 949.
+
+See HANDOFF's "12.1 walker secrecy guards" section for what 12.1 actually changed —
+notably that the predicted object types do **not** exist, and that secrecy is per-API
+(only 36 of the 16,080 also had secret geometry).
+
+The original 2026-08-07 entry is kept below as 1a.
+
+<details><summary>Original reopening note, superseded the same day</summary>
+
+## 1b. REOPENED 2026-08-11 — the map is a PATCH behind, not just days
 
 12.1 went live 2026-08-11 (client build 69189; see `Projects\WoW\12.1-LAUNCH-DATA.md`).
 The map on disk is stamped `2026-08-07 21:21:28`, `build = 120007` — that is 12.0.7,
@@ -27,6 +47,8 @@ does **not** corroborate them. v1.6.0's guards are type-agnostic so nothing depe
 the names being right, but do not treat them as verified until a live map shows them.
 
 The resolution below stands as the record of the 2026-08-07 re-map; it was correct then.
+
+</details>
 
 ---
 
