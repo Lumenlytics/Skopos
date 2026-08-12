@@ -248,13 +248,31 @@ marked **per API** (only 36 of 16,080 unreadable-visibility rows also had secret
 geometry), so one probe genuinely tells you nothing about the next. A direct query would
 replace inference with fact.
 
-**To resolve:** `/sko api C_Secrets` enumerates the namespace — one command, whole
-surface. Then decide whether `/sko secret` should consult it, either alongside the
-empirical probe (report both, flag disagreement) or in place of it.
+**The namespace is already documented — and by Marshall.**
+`Projects\WoW\AbilityMap\_project\knowledge\WoW-Midnight-Addon-Dev-KnowledgeBase.md`
+§2.3 lists the family:
 
-⚠ Don't assume it is broadly useful before seeing it. The one function observed is
-spell-cooldown-specific, so this may be a narrow helper rather than a general secrecy
-oracle. Enumerate first, design second.
+```
+C_Secrets.HasSecretRestrictions, ShouldUnitHealthMaxBeSecret,
+ShouldUnitPowerBeSecret, ShouldCooldownsBeSecret, ShouldAurasBeSecret,
+ShouldUnitComparisonBeSecret, ShouldUnitIdentityBeSecret, GetPowerTypeSecrecy
+```
+
+So the caveat an earlier draft of this item carried — "the one function observed is
+spell-cooldown-specific, it may be a narrow helper" — was wrong. It is a **general
+policy family**, and it is in normal use: Platynator and Coolinator gate on it,
+MythicDungeonTools uses `ShouldAurasBeSecret`, oUF uses `CanCompareUnitTokens`, and
+Krito's own `Probe.lua` already probes three of these.
+
+**To resolve:** `/sko api C_Secrets` still confirms what this build actually exposes
+(the KB is research, the sweep is ground truth). Then decide whether `/sko secret`
+consults it — most likely reporting both the policy answer and the empirical one, and
+flagging any disagreement, since the two answer subtly different questions.
+
+⚠ **Wider lesson, worth more than the feature:** several sessions went into measuring
+secrecy empirically when `ShouldUnitPowerBeSecret` and `GetPowerTypeSecrecy` were sitting
+in Marshall's own knowledge base the whole time. Read that doc before designing a probe.
+Recorded as the `midnight-secrets-knowledge-base` memory so every chat picks it up.
 
 ---
 
