@@ -5,7 +5,32 @@ the conversation that produced it.
 
 ---
 
-## 1. RESOLVED — the map on disk was from 2026-07-24, not fresh
+## 1. REOPENED 2026-08-11 — the map is a PATCH behind, not just days
+
+12.1 went live 2026-08-11 (client build 69189; see `Projects\WoW\12.1-LAUNCH-DATA.md`).
+The map on disk is stamped `2026-08-07 21:21:28`, `build = 120007` — that is 12.0.7,
+i.e. the previous patch. Object-type census confirms it: no `ManagedAuraContainer` and
+no `VectorGraphics` anywhere in its 26,893 rows.
+
+This is worse than ordinary staleness. Frame names survive a content patch; **object
+types and secrecy behaviour do not**, and v1.6.0's whole point is recording secrecy
+the walker previously laundered. Until a 12.1 map exists, every `H` in the current map
+is unverifiable — under 12.0.7 rules a secret `IsShown()` was silently written as `H`.
+
+**To resolve:** `/sko map` + `/reload` on the live 12.1 client. Three things confirm it:
+`meta.build` should read `120100`, `meta.unreadableVis` should be **non-zero for the
+first time ever**, and `ManagedAuraContainer` should appear in the object-type census
+off Blizzard's own Target Frame.
+
+⚠ Those two object-type names come from the Sniffer relay only — `12.1-LAUNCH-DATA.md`
+does **not** corroborate them. v1.6.0's guards are type-agnostic so nothing depends on
+the names being right, but do not treat them as verified until a live map shows them.
+
+The resolution below stands as the record of the 2026-08-07 re-map; it was correct then.
+
+---
+
+## 1a. RESOLVED (2026-08-07) — the map on disk was from 2026-07-24, not fresh
 
 **Found:** 2026-07-28, while catching up after a chat was deleted.
 
