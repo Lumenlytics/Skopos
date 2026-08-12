@@ -4,14 +4,14 @@
 -- /sko find <text>  search live frame names
 -- /sko api <text>   search _G AND C_* namespaces (does this API exist in this build?)
 -- /sko secret <api> [args]  call an API, report whether its returns are SECRET
--- /sko attr <frame> [key]   dump secure attributes + snippets on a live frame
+-- /sko attr <frame|@last> [key]  secure attributes + snippets (@last = last grab)
 -- /sko events [sec]  register ALL events for a window, report what actually fired
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.6.0"
+local VERSION = "1.7.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -242,6 +242,12 @@ local function BuildMap(includeRegions)
     msg("|cffffcc00/reload|r to flush the map to SavedVariables\\Skopos.lua.")
 end
 
+-- The live object from the last /sko grab. Kept because the interesting frames in
+-- 12.1 are ANONYMOUS: an aura button's debugName is UIParent.<hex>.DebuffDisplay.<hex>,
+-- whose segments are runtime addresses, not table keys — so resolvePath can never
+-- reach it and /sko attr <name> is useless there. Hovering is the only handle.
+local lastGrab
+
 local function Grab(delaySec)
     local delay = tonumber(delaySec) or 2
     msg(("Grabbing whatever is under the mouse in %d second(s) — hover it now."):format(delay))
@@ -256,6 +262,7 @@ local function Grab(delaySec)
             msg("Nothing under the mouse.")
             return
         end
+        lastGrab = foci[1]
         local stack = {}
         for i, f in ipairs(foci) do
             stack[i] = describeFrame(f)
@@ -275,7 +282,7 @@ local function Grab(delaySec)
         msg(("Grabbed %d frame(s) under the mouse:"):format(#stack))
         for _, line in ipairs(stack) do chatLine(line) end
         msg("Ancestry: |cffffffff" .. pick.ancestry:gsub("|", "||") .. "|r")
-        msg(("Saved as pick #%d. /sko note <text> to annotate, /reload to flush to disk."):format(#SkoposDB.picks))
+        msg(("Saved as pick #%d. /sko note <text> to annotate, |cffffcc00/sko attr @last|r for its attributes."):format(#SkoposDB.picks))
     end)
 end
 
@@ -566,16 +573,31 @@ end
 
 local function AttrProbe(input)
     if not input or input == "" then
-        msg("Usage: /sko attr <frame> [key ...]")
+        msg("Usage: /sko attr <frame|@last> [key ...]")
+        chatLine("@last = the frame from the most recent /sko grab — the only way to")
+        chatLine("reach anonymous frames, which is most of 12.1's aura tree")
         chatLine("no keys = probe the built-in list; keys given = probe only those")
         chatLine(("built-in list is %d keys — see the caveat in HANDOFF.md"):format(#ATTR_KEYS))
         return
     end
     local name, rest = input:match("^(%S+)%s*(.-)%s*$")
-    local frame, err = resolvePath(name)
-    if not frame then
-        msg(("Cannot resolve '%s': %s"):format(name, err))
-        return
+    local frame, err
+    if name == "@last" then
+        frame = lastGrab
+        if not frame then
+            msg("No grab yet this session — /sko grab first, then /sko attr @last.")
+            return
+        end
+    else
+        frame, err = resolvePath(name)
+        if not frame then
+            msg(("Cannot resolve '%s': %s"):format(name, err))
+            if name:find("%.") then
+                chatLine("anonymous debugName segments are addresses, not keys — they never resolve.")
+                chatLine("hover it and use |cffffcc00/sko grab|r, then |cffffcc00/sko attr @last|r.")
+            end
+            return
+        end
     end
     if type(frame) ~= "table" then
         msg(("'%s' is a %s, not a frame."):format(name, type(frame)))
@@ -695,6 +717,9 @@ local function EventSniff(seconds)
     sniffFrame:RegisterAllEvents()
     sniffActive = true
     msg(("Sniffing ALL events for %d second(s) — go do the thing you want to trace."):format(dur))
+    -- Nothing is written until the timer fires, so reloading mid-window loses the
+    -- whole run with no error. Say so, because a silent loss looks like a broken command.
+    chatLine("|cffff8800do NOT /reload until the window closes|r — results are written when it ends")
 
     C_Timer.After(dur, function()
         sniffFrame:UnregisterAllEvents()
@@ -754,7 +779,7 @@ local function Help()
     chatLine("/sko find <txt> search live frame names")
     chatLine("/sko api <txt>  search _G + C_* namespaces — does this API exist?")
     chatLine("/sko secret <api> [args]  does it return a SECRET? (works in combat)")
-    chatLine("/sko attr <frame> [key]   secure attributes + snippets on a frame")
+    chatLine("/sko attr <frame|@last>   secure attributes + snippets (@last = last grab)")
     chatLine("/sko events [sec]  what events fire in a window? (default 5s, max 30)")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")

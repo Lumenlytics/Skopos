@@ -93,6 +93,18 @@ These frames are **Blizzard's, not Muster's**, despite `Dispel` matching a Muste
 filename — checked against Muster's source, which contains no `TextsContainer`,
 `DebuffDisplay` or `.Dispel` symbol. Muster contributes 236 frames to the map.
 
+**Regions confirmed too** — first `/sko map full` ever taken, 2026-08-11 22:20:06:
+152,415 lines, 23.7 MB, 109,379 region rows. Regions carry the same partitioning:
+
+| | `V` | `S` | `H` | `?` |
+|---|---|---|---|---|
+| frames | 953 | 16,005 | 9,998 | **16,080** |
+| regions | 948 | 59,052 | 25,267 | **24,112** |
+
+16,080 + 24,112 = 40,192, reconciling exactly with `meta.unreadableVis`, so the frame
+and region paths agree and the counter is trustworthy. `map full` is ~5x the size of a
+plain map; take one only when regions are actually needed.
+
 Skopos never risked *crashing* on them — every widget read has gone through `safe()`
 since v1.0.1. The actual defect was quieter and worse:
 
@@ -131,6 +143,10 @@ number:6552`, or `secret` for a secret-marked arg, capped at 6 args). Capturing 
 firing would be the expensive part; counting is just an increment, and
 `COMBAT_LOG_EVENT_UNFILTERED` alone can fire hundreds of times a second.
 
+⚠ **Do not `/reload` before the window closes.** Nothing is written until the timer
+fires, so reloading mid-sniff loses the entire run with no error message — it just looks
+like the command did nothing. v1.7.0 prints a warning when the sniff starts.
+
 Duration defaults to 5s and is **clamped to 1–30**, because this calls
 `RegisterAllEvents` — a mistyped `600` would otherwise hold the firehose open for ten
 minutes. Only one sniff runs at a time; a second call while one is live is refused.
@@ -140,6 +156,18 @@ An empty result is still recorded: "nothing fired in that window" is a real answ
 `{time, build, query, frame, objectType, protected, probed, explicitKeys, found, attrs}`,
 where `attrs` is an array of `key|luaType|SECRET-or-plain|value` strings. A key whose
 read errored is recorded as `key|?|errored|<read failed>` rather than dropped.
+
+⚠ **`/sko attr <name>` only reaches NAMED globals — and most of 12.1's aura tree is
+anonymous.** An aura button's debugName looks like
+`UIParent.279f75b2f70.DebuffDisplay.279f75b4140`, whose segments are runtime addresses,
+not table keys, so `resolvePath` can never walk to it. `BuffDisplay` is not a global at
+all; it only ever appears as a path segment. Verified 2026-08-11 against the live 12.1
+map — there is no top-level frame by that name.
+
+**Use `/sko attr @last` instead** (v1.7.0+): `/sko grab 3`, hover the thing, then
+`/sko attr @last` dumps attributes for the frame that grab captured. Hovering is the
+only handle on an anonymous frame. `@last` holds a live reference and does not survive
+a `/reload`, so do the grab and the attr dump in the same session.
 
 ⚠ **This is a best-effort dump, NOT a complete one.** There is no enumerate-attributes
 call in the WoW API — `GetAttribute` answers one key at a time — so the command probes
