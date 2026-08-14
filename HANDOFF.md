@@ -21,6 +21,27 @@ whole time. The knowledge was never missing; the pointer from here to it was.
 `AbilityMap\_project\knowledge\` is a pre-12.1 archive and now carries a DO-NOT-CITE
 banner.
 
+### Gate: before building anything that MEASURES client behaviour
+
+This applies harder here than anywhere else, because measuring *is* this addon's job —
+which is exactly why probing felt like the default rather than the fallback.
+
+Before writing a new probe command, do this and **say in the chat what it returned**:
+
+1. Grep the bible for the **problem word** — "secret", "taint", "cooldown", "aura" —
+   **not** the API name already in mind. The `/sko api` research counted usage of
+   `GetAttribute` and `RegisterAllEvents` because those were already thought of;
+   `Secret` was never searched, and one grep would have returned `C_Secrets` with call
+   sites in Platynator, Coolinator, MythicDungeonTools, oUF and Krito.
+2. Grep `Interface\AddOns` for the same word. Shipping addons are evidence of what the
+   platform actually exposes.
+3. **If the platform answers it, use the platform.** A probe describes one call in one
+   context; 12.1 marks secrecy per-API, so a probe result does not generalise. A policy
+   query returns the rule.
+
+Probing remains correct for what no API reports — which is still most of what Skopos
+does. It is the fallback, not the first move.
+
 ## Status
 
 - v1.0.1 **FULLY VERIFIED in-game** 2026-07-24: map = 28,854 frames, 4.9 MB, zero
