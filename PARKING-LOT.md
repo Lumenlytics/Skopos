@@ -172,8 +172,8 @@ append-only `SkoposDB.<name>` log, render values as pipe-delimited strings, flus
 | ~~`/sko attr <frame>`~~ | ✅ **BUILT v1.4.0 · `@last` v1.7.0 · LIVE-VERIFIED 2026-08-11** | — |
 | `/sko scripts <frame>` | Which handlers are set. `OnUpdate` = perf smell, `OnClick` = interactive | `GetScript` 120, `HasScript` 6 |
 | ~~`/sko events <sec>`~~ | ✅ **BUILT v1.5.0 · LIVE-VERIFIED 2026-08-11** | — |
-| `/sko addons` | Name/version/enabled/LoD/memory. Explains frame provenance: who made `DetailsBarra_1_5` | `C_AddOns.GetAddOnMetadata` 61 |
-| ~~`/sko cvar <pattern>`~~ | ✅ **BUILT 2026-08-15, v1.8.0** | — |
+| ~~`/sko addons`~~ | ✅ **BUILT 2026-08-15, v1.9.0** — item 4 is now fully built | — |
+| ~~`/sko cvar <pattern>`~~ | ✅ **BUILT 2026-08-15, v1.8.0** — but see the correction below | — |
 
 ✅ **`/sko attr` shipped in v1.4.0.** The keyspace problem was real and is handled the
 way this note anticipated: 133 known keys probed, the output states plainly that
@@ -181,6 +181,17 @@ absence is not proof, and explicit keys can be passed to test anything off the l
 `probed` / `explicitKeys` are recorded so an empty result can be read correctly.
 Snippet bodies get a 1000-char cap against 120 for ordinary values, since the snippet
 is the actual payload worth reading.
+
+⚠ **Correction 2026-08-15 — this table's justification for `/sko cvar` was wrong.**
+It said *"CVar sweep. Compact raid frame settings live here — directly relevant to
+Muster's `Blizzard.lua`."* They do not. Live check: `/sko cvar compactparty` at build
+`120100` scanned **1787** commands and returned **0** — a true negative, not a failure.
+Muster's `Blizzard.lua` uses `CompactRaidFrameManager_SetSetting("IsShown", …)`, an
+API, never a CVar.
+
+The command works and is still worth having; the *reason* recorded for building it was
+never verified. Written down here rather than quietly edited, because that claim was
+the whole argument for its priority.
 
 ### Deliberately NOT worth building — don't rediscover these
 
@@ -228,7 +239,55 @@ needs deeper today; revisit if one appears.
 
 ---
 
-## 6. Investigate the `C_Secrets` namespace
+## 6. RESOLVED 2026-08-15 — `C_Secrets` enumerated live: 27 functions
+
+`/sko api C_Secrets` on the live client at build `120100` returned **28 matches** —
+the table plus **27 functions**, `unreadable` empty. The full family:
+
+```
+HasSecretRestrictions          CanCompareUnitTokens
+GetPowerTypeSecrecy            GetSpellAuraSecrecy
+GetSpellCastSecrecy            GetSpellCooldownSecrecy
+ShouldActionCooldownBeSecret   ShouldAurasBeSecret
+ShouldCooldownsBeSecret        ShouldSpellAuraBeSecret
+ShouldSpellBookItemCooldownBeSecret  ShouldSpellCooldownBeSecret
+ShouldTotemSlotBeSecret        ShouldTotemSpellBeSecret
+ShouldUnitAuraIndexBeSecret    ShouldUnitAuraInstanceBeSecret
+ShouldUnitAuraSlotBeSecret     ShouldUnitComparisonBeSecret
+ShouldUnitHealthMaxBeSecret    ShouldUnitIdentityBeSecret
+ShouldUnitPowerBeSecret        ShouldUnitPowerMaxBeSecret
+ShouldUnitSpellCastBeSecret    ShouldUnitSpellCastingBeSecret
+ShouldUnitStatsBeSecret        ShouldUnitThreatStateBeSecret
+ShouldUnitThreatValuesBeSecret
+```
+
+⚠ **The bible's §2.3 lists 8 of these.** Live has 27. That is not a criticism of the
+doc — it predates the live build — but do **not** treat §2.3's list as exhaustive.
+Enumerate against the client. (The bible is Sniffer's file; flagged, not edited.)
+
+**This is a Muster payload more than a Skopos one**, and Muster's chat should act on
+it, not this one. Nearly every open Muster question now has a matching policy call:
+
+| Muster item | Ask instead of probe |
+|---|---|
+| P4.1 class resources | `ShouldUnitPowerBeSecret` · `ShouldUnitPowerMaxBeSecret` · `GetPowerTypeSecrecy` |
+| P4.3 totems | `ShouldTotemSlotBeSecret` · `ShouldTotemSpellBeSecret` |
+| P4.5 auras | `ShouldUnitAuraIndexBeSecret` · `…InstanceBeSecret` · `…SlotBeSecret` · `GetSpellAuraSecrecy` |
+| P4.6 interrupt cast bar | `ShouldSpellCooldownBeSecret` · `ShouldActionCooldownBeSecret` · `GetSpellCooldownSecrecy` |
+| cast bar generally | `ShouldUnitSpellCastBeSecret` · `ShouldUnitSpellCastingBeSecret` |
+| threat indicator | `ShouldUnitThreatStateBeSecret` · `ShouldUnitThreatValuesBeSecret` |
+
+Note the `Get*Secrecy` functions return something richer than a boolean — worth probing
+one with `/sko secret C_Secrets.GetPowerTypeSecrecy 4` before designing against them.
+
+**The open Skopos question is now a DECIDE, carried in the FLEET block:** should
+`/sko secret` consult the policy API as well as probing? Recommend reporting both and
+flagging disagreement — they answer genuinely different questions, and a disagreement
+between them would itself be the interesting result.
+
+<details><summary>Original investigation note</summary>
+
+## 6a. Investigate the `C_Secrets` namespace
 
 **Found 2026-08-11**, incidentally, in the first live `/sko api` sweep on 12.1:
 
@@ -280,6 +339,8 @@ cited the stale one.
 secrecy empirically when `ShouldUnitPowerBeSecret` and `GetPowerTypeSecrecy` were sitting
 in Marshall's own knowledge base the whole time. Read that doc before designing a probe.
 Recorded as the `midnight-secrets-knowledge-base` memory so every chat picks it up.
+
+</details>
 
 ---
 

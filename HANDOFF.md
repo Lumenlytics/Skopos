@@ -1,12 +1,12 @@
 <!-- FLEET
 addon: Skopos
-version: 1.8.0
+version: 1.9.0
 status: DONE-UNVERIFIED
 owner-chat: Skopos
 needs-marshall:
-  - TEST: /sko cvar compactparty returns useCompactPartyFrames (~1 min, any time)
-  - TEST: /sko api C_Secrets enumerates the policy family (~1 min, any time)
-next-action: build /sko addons, the last unbuilt command in PARKING-LOT item 4
+  - TEST: /sko addons shows Details heaviest, then /reload (~1 min, any time)
+  - DECIDE: should /sko secret consult C_Secrets policy as well as probing? options - report both and flag disagreement, replace probing, or leave as-is. Recommend report-both, since they answer different questions
+next-action: none queued - PARKING-LOT item 4 is fully built
 broadcast-read: 2026-08-15
 updated: 2026-08-15
 -->
@@ -181,6 +181,24 @@ this class of problem should announce itself, rather than by silently mislabelli
 
 `SkoposDB.map.meta` has timestamp, client build, resolution, UI scale, counts, and
 this format string. `SkoposDB.picks` is an array of grabs: `{time, stack, ancestry, note?}`.
+
+`SkoposDB.addons` (v1.9.0+) is an append-only log of `/sko addons` inventories:
+`{time, build, query, installed, count, memoryRead, totalKB, results}`, where `results`
+is an array of `name|version|memoryKB|flags`. Flags: `L` loaded, `O` load-on-demand,
+`X` disabled, `P` enabled per-character only, `B` Blizzard (SECURE).
+
+**Sorted heaviest-first**, because the inventory's main use is explaining where memory
+went; alphabetical buries that under a hundred small addons. This is what answers
+"who made `DetailsBarra_1_5`?" — a question the map raises and cannot settle.
+
+⚠ `memoryRead` matters. **Details replaces the global `UpdateAddOnMemoryUsage`** when
+its stutter check is on, so that call may not be Blizzard's and may throw. It is
+pcall'd; on failure every row reports `?` for memory, `memoryRead` is `false`, and the
+inventory still returns. Do not read a `?` as "this addon uses no memory".
+
+`GetAddOnInfo` is read through `pcall`, not the usual `safe()`, because `safe()` returns
+at most five values and the security field is the sixth — through `safe()` the `B` flag
+could never have been set.
 
 `SkoposDB.cvars` (v1.8.0+) is an append-only log of `/sko cvar` sweeps:
 `{time, build, query, scanned, count, changed, results}`, where `results` is an array

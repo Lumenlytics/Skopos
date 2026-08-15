@@ -7,12 +7,13 @@
 -- /sko attr <frame|@last> [key]  secure attributes + snippets (@last = last grab)
 -- /sko events [sec]  register ALL events for a window, report what actually fired
 -- /sko cvar <text>   search CVars; changed-from-default listed first
+-- /sko addons [text] installed addon inventory: version, memory, load state
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.8.0"
+local VERSION = "1.9.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -838,6 +839,104 @@ local function CvarProbe(pattern)
     msg(("Saved as cvar query #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.cvars))
 end
 
+-- Answers "who made this frame?" — the question the map raises and cannot settle.
+-- A row like DetailsBarra_1_5 means nothing until you know Details is loaded, at what
+-- version, and how much memory it is holding.
+--
+-- Enumeration follows BtWQuests and !BugGrabber, the two installed addons that walk
+-- the whole addon list: C_AddOns.GetNumAddOns with GetAddOnInfo / GetAddOnMetadata /
+-- GetAddOnEnableState per index, each resolved with a pre-C_AddOns fallback.
+local function AddonInventory(pattern)
+    -- No pre-C_AddOns fallbacks: the .toc supports 120000+ and C_AddOns exists on all
+    -- of them, so `X or GetNumAddOns` would be dead code — and whitelisting removed
+    -- globals for luacheck would blunt the check that catches Midnight renames.
+    if not C_AddOns or not C_AddOns.GetNumAddOns then
+        msg("No C_AddOns enumeration API on this build.")
+        return
+    end
+    local numAddons = C_AddOns.GetNumAddOns
+    local addonInfo = C_AddOns.GetAddOnInfo
+    local addonMeta = C_AddOns.GetAddOnMetadata
+    local addonLoaded = C_AddOns.IsAddOnLoaded
+    local addonLoD = C_AddOns.IsAddOnLoadOnDemand
+    local addonEnabled = C_AddOns.GetAddOnEnableState
+
+    -- Memory is optional: Details REPLACES the global UpdateAddOnMemoryUsage when its
+    -- stutter check is on, so this may not be Blizzard's function at all. pcall it and
+    -- carry on without figures rather than failing the whole inventory.
+    local memOK = pcall(function()
+        if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+    end)
+
+    local needle = pattern and pattern ~= "" and pattern:lower() or nil
+    local rows, total, shown = {}, 0, 0
+    local playerName = UnitName and UnitName("player") or nil
+
+    local okCount, count = pcall(numAddons)
+    if not okCount or type(count) ~= "number" then
+        msg("Enumerating addons failed.")
+        return
+    end
+
+    for i = 1, count do
+        -- pcall rather than safe(): safe() returns at most 5 values and GetAddOnInfo's
+        -- security field is the 6th, so it would silently always be nil.
+        local okInfo, aName, aTitle, _, _, _, aSecurity = pcall(addonInfo, i)
+        if not okInfo then aName, aTitle, aSecurity = nil, nil, nil end
+        local realName = type(aName) == "string" and aName or ("#" .. i)
+        if not needle or realName:lower():find(needle, 1, true)
+            or (type(aTitle) == "string" and aTitle:lower():find(needle, 1, true)) then
+            local version = safe(addonMeta, i, "Version") or "?"
+            local kb = memOK and safe(GetAddOnMemoryUsage, i) or nil
+            if type(kb) == "number" then total = total + kb end
+            local flags = ""
+            if safe(addonLoaded, i) then flags = flags .. "L" end
+            if safe(addonLoD, i) then flags = flags .. "O" end
+            -- 2 = enabled, 1 = enabled for some characters, 0 = disabled.
+            local state = playerName and safe(addonEnabled, i, playerName) or nil
+            if state == 0 then flags = flags .. "X"
+            elseif state == 1 then flags = flags .. "P" end
+            if aSecurity == "SECURE" then flags = flags .. "B" end
+            rows[#rows + 1] = {
+                mem = type(kb) == "number" and kb or -1,
+                line = table.concat({ realName, version,
+                    type(kb) == "number" and ("%.0f"):format(kb) or "?", flags }, "|"),
+            }
+            shown = shown + 1
+        end
+    end
+
+    -- Heaviest first: the inventory's main use is explaining where memory went, and
+    -- an alphabetical list buries that under a hundred small addons.
+    table.sort(rows, function(a, b)
+        if a.mem ~= b.mem then return a.mem > b.mem end
+        return a.line < b.line
+    end)
+    local results = {}
+    for i, r in ipairs(rows) do results[i] = r.line end
+
+    table.insert(SkoposDB.addons, {
+        time = date("%Y-%m-%d %H:%M:%S"),
+        build = select(4, GetBuildInfo()),
+        query = pattern ~= "" and pattern or nil,
+        installed = count,
+        count = shown,
+        memoryRead = memOK and true or false,
+        totalKB = memOK and ("%.0f"):format(total) or nil,
+        results = results,
+    })
+
+    msg(("%d of %d installed addon(s)%s%s:"):format(shown, count,
+        needle and (" matching '" .. pattern .. "'") or "",
+        memOK and (", %.1f MB total"):format(total / 1024) or ", memory unavailable"))
+    for i = 1, math.min(#results, 30) do chatLine(results[i]) end
+    if #results > 30 then
+        msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.addons."):format(#results - 30))
+    end
+    chatLine("|cff888888flags: L loaded, O load-on-demand, X disabled, P per-character, B Blizzard|r")
+    msg(("Saved as addon inventory #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.addons))
+end
+
 local function Note(text)
     if not text or text == "" then
         msg("Usage: /sko note <text>")
@@ -863,6 +962,7 @@ local function Help()
     chatLine("/sko attr <frame|@last>   secure attributes + snippets (@last = last grab)")
     chatLine("/sko events [sec]  what events fire in a window? (default 5s, max 30)")
     chatLine("/sko cvar <txt>   search CVars; changed-from-default first")
+    chatLine("/sko addons [txt] addon inventory: version, memory, load state")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")
     chatLine("Maps/grabs hit disk on /reload, at WTF\\...\\SavedVariables\\Skopos.lua")
@@ -890,6 +990,8 @@ SlashCmdList.SKOPOS = function(input)
         EventSniff(rest)
     elseif cmd == "cvar" then
         CvarProbe(rest)
+    elseif cmd == "addons" then
+        AddonInventory(rest)
     elseif cmd == "note" then
         Note(rest)
     elseif cmd == "clear" then
@@ -912,5 +1014,6 @@ loader:SetScript("OnEvent", function(self, _, name)
     SkoposDB.attrs = SkoposDB.attrs or {}
     SkoposDB.events = SkoposDB.events or {}
     SkoposDB.cvars = SkoposDB.cvars or {}
+    SkoposDB.addons = SkoposDB.addons or {}
     msg("v" .. VERSION .. " loaded. /sko for commands.")
 end)
