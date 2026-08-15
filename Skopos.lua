@@ -6,12 +6,13 @@
 -- /sko secret <api> [args]  call an API, report whether its returns are SECRET
 -- /sko attr <frame|@last> [key]  secure attributes + snippets (@last = last grab)
 -- /sko events [sec]  register ALL events for a window, report what actually fired
+-- /sko cvar <text>   search CVars; changed-from-default listed first
 -- /sko note <text>  attach a note to the latest grab
 -- /sko clear        wipe saved grabs
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.7.0"
+local VERSION = "1.8.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -415,7 +416,10 @@ end
 -- Deliberately permitted IN COMBAT, unlike /sko map: many values are secret only in
 -- combat, so combat state is part of the answer and is recorded alongside it.
 
-local unpack = unpack or table.unpack
+-- WoW is Lua 5.1, where `unpack` is a global and `table.unpack` does not exist.
+-- The 5.2+ fallback that used to sit here was dead code in-game and the only
+-- luacheck warning in this file; the scratchpad test harnesses carry their own.
+local unpack = unpack
 
 -- pcall returns a variable number of values and some may be nil, so select("#") is
 -- the only honest count — #results would stop at the first nil.
@@ -757,6 +761,83 @@ local function EventSniff(seconds)
     end)
 end
 
+-- Enumeration pattern taken from BlizzMove_Debug, which is the only installed addon
+-- that sweeps CVars: ConsoleGetAllCommands or C_Console.GetAllCommands, then
+-- GetCVarInfo on each command name. Both forms are checked because the global was
+-- the older spelling.
+local function CvarProbe(pattern)
+    if not pattern or pattern == "" then
+        msg("Usage: /sko cvar <text>   (substring of a CVar name, case-insensitive)")
+        chatLine("flags: C changed-from-default, A account, H character, L locked, S secure, R readonly")
+        return
+    end
+    local enumerate = ConsoleGetAllCommands or (C_Console and C_Console.GetAllCommands)
+    if not enumerate then
+        msg("No CVar enumeration API on this build — neither ConsoleGetAllCommands nor C_Console.GetAllCommands.")
+        return
+    end
+    local okList, commands = pcall(enumerate)
+    if not okList or type(commands) ~= "table" then
+        msg("Enumerating console commands failed.")
+        return
+    end
+
+    local needle = pattern:lower()
+    local changedRows, plainRows, scanned = {}, {}, 0
+    for _, entry in ipairs(commands) do
+        local name = type(entry) == "table" and entry.command or nil
+        if type(name) == "string" then
+            scanned = scanned + 1
+            if name:lower():find(needle, 1, true) then
+                local ok, value, default, account, character, locked, secure, readonly =
+                    pcall(GetCVarInfo, name)
+                -- GetCVarInfo returns nothing for a console COMMAND as opposed to a
+                -- variable. That is the honest way to tell them apart without relying
+                -- on a commandType enum whose numbering could change.
+                if ok and type(value) ~= "nil" then
+                    local isChanged = value ~= default
+                    local flags = ""
+                    if isChanged then flags = flags .. "C" end
+                    if account then flags = flags .. "A" end
+                    if character then flags = flags .. "H" end
+                    if locked then flags = flags .. "L" end
+                    if secure then flags = flags .. "S" end
+                    if readonly then flags = flags .. "R" end
+                    local row = table.concat({ name, renderValue(value, 40),
+                        renderValue(default, 40), flags }, "|")
+                    -- Changed-from-default first: on a machine with a decade of
+                    -- settings, those are the handful that explain current behaviour.
+                    if isChanged then changedRows[#changedRows + 1] = row
+                    else plainRows[#plainRows + 1] = row end
+                end
+            end
+        end
+    end
+    table.sort(changedRows)
+    table.sort(plainRows)
+    local results = {}
+    for _, r in ipairs(changedRows) do results[#results + 1] = r end
+    for _, r in ipairs(plainRows) do results[#results + 1] = r end
+
+    table.insert(SkoposDB.cvars, {
+        time = date("%Y-%m-%d %H:%M:%S"),
+        build = select(4, GetBuildInfo()),
+        query = pattern,
+        scanned = scanned,
+        count = #results,
+        changed = #changedRows,
+        results = results,
+    })
+
+    msg(("%d CVar(s) matching '%s' (%d changed from default, %d commands scanned):"):format(
+        #results, pattern, #changedRows, scanned))
+    for i = 1, math.min(#results, 30) do chatLine(results[i]) end
+    if #results > 30 then
+        msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.cvars."):format(#results - 30))
+    end
+    msg(("Saved as cvar query #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.cvars))
+end
+
 local function Note(text)
     if not text or text == "" then
         msg("Usage: /sko note <text>")
@@ -781,6 +862,7 @@ local function Help()
     chatLine("/sko secret <api> [args]  does it return a SECRET? (works in combat)")
     chatLine("/sko attr <frame|@last>   secure attributes + snippets (@last = last grab)")
     chatLine("/sko events [sec]  what events fire in a window? (default 5s, max 30)")
+    chatLine("/sko cvar <txt>   search CVars; changed-from-default first")
     chatLine("/sko note <txt> annotate the latest grab")
     chatLine("/sko clear      wipe saved grabs")
     chatLine("Maps/grabs hit disk on /reload, at WTF\\...\\SavedVariables\\Skopos.lua")
@@ -806,6 +888,8 @@ SlashCmdList.SKOPOS = function(input)
         AttrProbe(rest)
     elseif cmd == "events" then
         EventSniff(rest)
+    elseif cmd == "cvar" then
+        CvarProbe(rest)
     elseif cmd == "note" then
         Note(rest)
     elseif cmd == "clear" then
@@ -827,5 +911,6 @@ loader:SetScript("OnEvent", function(self, _, name)
     SkoposDB.secret = SkoposDB.secret or {}
     SkoposDB.attrs = SkoposDB.attrs or {}
     SkoposDB.events = SkoposDB.events or {}
+    SkoposDB.cvars = SkoposDB.cvars or {}
     msg("v" .. VERSION .. " loaded. /sko for commands.")
 end)

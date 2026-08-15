@@ -173,7 +173,7 @@ append-only `SkoposDB.<name>` log, render values as pipe-delimited strings, flus
 | `/sko scripts <frame>` | Which handlers are set. `OnUpdate` = perf smell, `OnClick` = interactive | `GetScript` 120, `HasScript` 6 |
 | ~~`/sko events <sec>`~~ | ✅ **BUILT v1.5.0 · LIVE-VERIFIED 2026-08-11** | — |
 | `/sko addons` | Name/version/enabled/LoD/memory. Explains frame provenance: who made `DetailsBarra_1_5` | `C_AddOns.GetAddOnMetadata` 61 |
-| `/sko cvar <pattern>` | CVar sweep. Compact raid frame settings live here — directly relevant to Panoply's `Blizzard.lua` | `C_CVar.GetCVar` 35, `GetCVarInfo` 18 |
+| ~~`/sko cvar <pattern>`~~ | ✅ **BUILT 2026-08-15, v1.8.0** | — |
 
 ✅ **`/sko attr` shipped in v1.4.0.** The keyspace problem was real and is handled the
 way this note anticipated: 133 known keys probed, the output states plainly that

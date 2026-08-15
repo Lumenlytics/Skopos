@@ -1,3 +1,16 @@
+<!-- FLEET
+addon: Skopos
+version: 1.8.0
+status: DONE-UNVERIFIED
+owner-chat: Skopos
+needs-marshall:
+  - TEST: /sko cvar compactparty returns useCompactPartyFrames (~1 min, any time)
+  - TEST: /sko api C_Secrets enumerates the policy family (~1 min, any time)
+next-action: build /sko addons, the last unbuilt command in PARKING-LOT item 4
+broadcast-read: 2026-08-15
+updated: 2026-08-15
+-->
+
 # Skopos — handoff
 
 Frame cartographer. Exists to solve one problem: "which frame do I edit?" It dumps
@@ -168,6 +181,21 @@ this class of problem should announce itself, rather than by silently mislabelli
 
 `SkoposDB.map.meta` has timestamp, client build, resolution, UI scale, counts, and
 this format string. `SkoposDB.picks` is an array of grabs: `{time, stack, ancestry, note?}`.
+
+`SkoposDB.cvars` (v1.8.0+) is an append-only log of `/sko cvar` sweeps:
+`{time, build, query, scanned, count, changed, results}`, where `results` is an array
+of `name|value|default|flags`. Flags: `C` changed-from-default, `A` account-stored,
+`H` character-stored, `L` locked, `S` secure, `R` readonly.
+
+**Changed-from-default rows sort first.** On a client with years of settings, those
+are the handful that explain current behaviour; the rest is Blizzard's defaults.
+
+Enumeration uses `ConsoleGetAllCommands or C_Console.GetAllCommands` — the pattern
+`BlizzMove_Debug` uses, and the only installed addon that sweeps CVars. That list
+holds console **commands** as well as variables; a command is identified by
+`GetCVarInfo` returning nothing for it, rather than by a `commandType` enum whose
+numbering could change. `scanned` records how many commands were walked, so a
+zero-result sweep can be told from a failed one.
 
 `SkoposDB.events` (v1.5.0+) is an append-only log of `/sko events` sniffs:
 `{time, build, seconds, inCombat, distinct, total, events}`, where `events` is an
