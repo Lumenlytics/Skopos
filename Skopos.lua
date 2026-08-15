@@ -13,7 +13,7 @@
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.9.0"
+local VERSION = "1.10.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -29,6 +29,10 @@ local function msg(text)
 end
 
 -- Chat interprets "|" as an escape; double it for display only.
+-- ⚠ Therefore NEVER pass a colour code to chatLine — the escape doubles its pipe and
+-- it renders literally as "||cff888888…". Shipped that way in 1.9.0 and it showed up
+-- in the /sko addons legend. chatLine already greys the line; use msg() when a line
+-- genuinely needs its own colour.
 local function chatLine(text)
     DEFAULT_CHAT_FRAME:AddMessage("|cffaaaaaa  " .. text:gsub("|", "||") .. "|r")
 end
@@ -466,6 +470,58 @@ local function classify(v)
     return isSecret, type(v), isSecret and "<secret>" or renderValue(v)
 end
 
+-- Marshall's decision 2026-08-15: report BOTH the empirical probe and the C_Secrets
+-- policy answer, and flag disagreement — they answer different questions. The probe
+-- says what THIS call returned in THIS context; the policy says what the rule is.
+-- A disagreement is itself the interesting result, so it is never silently reconciled.
+--
+-- Keyed on the probed function's own name, lowercased, last path segment only.
+-- The full 27-function family came from a live /sko api C_Secrets sweep at 120100;
+-- only the ones with an unambiguous mapping are listed.
+local POLICY_FOR = {
+    unitpower              = "ShouldUnitPowerBeSecret",
+    unitpowermax           = "ShouldUnitPowerMaxBeSecret",
+    unithealthmax          = "ShouldUnitHealthMaxBeSecret",
+    unitname               = "ShouldUnitIdentityBeSecret",
+    unitclass              = "ShouldUnitIdentityBeSecret",
+    unitguid               = "ShouldUnitIdentityBeSecret",
+    getspellcooldown       = "ShouldSpellCooldownBeSecret",
+    getactioncooldown      = "ShouldActionCooldownBeSecret",
+    getspellbookitemcooldown = "ShouldSpellBookItemCooldownBeSecret",
+    getauradatabyindex     = "ShouldUnitAuraIndexBeSecret",
+    getauradatabyaurainstanceid = "ShouldUnitAuraInstanceBeSecret",
+    getauraslots           = "ShouldUnitAuraSlotBeSecret",
+    unitcastinginfo        = "ShouldUnitSpellCastingBeSecret",
+    unitchannelinfo        = "ShouldUnitSpellCastingBeSecret",
+    unitthreatsituation    = "ShouldUnitThreatStateBeSecret",
+    unitdetailedthreatsituation = "ShouldUnitThreatValuesBeSecret",
+    gettoteminfo           = "ShouldTotemSlotBeSecret",
+    unitstat               = "ShouldUnitStatsBeSecret",
+}
+
+-- Called with the SAME arguments the probe used, because the policy question is
+-- context-dependent in the same way the probe is: ShouldUnitPowerBeSecret("player", 4)
+-- is a different question from ShouldUnitPowerBeSecret("target").
+local function consultPolicy(path, argv, argn)
+    local leaf = path:match("([^%.]+)$")
+    if not leaf then return nil end
+    local fnName = POLICY_FOR[leaf:lower()]
+    if not fnName then return nil end
+    if not C_Secrets or type(C_Secrets[fnName]) ~= "function" then
+        return { name = fnName, state = "absent" }
+    end
+    local ok, verdict = pcall(C_Secrets[fnName], unpack(argv, 1, argn))
+    if not ok then
+        return { name = fnName, state = "errored" }
+    end
+    if type(verdict) ~= "boolean" then
+        -- Get*Secrecy returns something richer than a boolean; report it rather than
+        -- coercing it into one.
+        return { name = fnName, state = "value", shown = renderValue(verdict, 40) }
+    end
+    return { name = fnName, state = "boolean", secret = verdict }
+end
+
 local function SecretProbe(input)
     if not input or input == "" then
         msg("Usage: /sko secret <API> [args]   e.g. /sko secret UnitPower player")
@@ -515,6 +571,12 @@ local function SecretProbe(input)
         end
     end
 
+    local policy = consultPolicy(path, argv, argn)
+    local agreement
+    if policy and policy.state == "boolean" then
+        agreement = (policy.secret == anySecret) and "AGREE" or "DISAGREE"
+    end
+
     -- Store the rendered strings only, never the raw values: a secret written into
     -- SavedVariables would either fail to serialise or poison whatever reads it.
     table.insert(SkoposDB.secret, {
@@ -524,6 +586,11 @@ local function SecretProbe(input)
         inCombat = inCombat,
         errored = errText,
         anySecret = anySecret,
+        policyFn = policy and policy.name or nil,
+        policyState = policy and policy.state or nil,
+        policySecret = policy and policy.state == "boolean" and policy.secret or nil,
+        policyValue = policy and policy.shown or nil,
+        agreement = agreement,
         returns = lines,
     })
 
@@ -533,6 +600,21 @@ local function SecretProbe(input)
         msg(("%s %s%s"):format(path, headline,
             anySecret and " |cffff4444SECRET present|r" or ""))
         for _, line in ipairs(lines) do chatLine(line) end
+    end
+    if policy then
+        if policy.state == "boolean" then
+            msg(("policy: C_Secrets.%s -> %s  %s"):format(policy.name, tostring(policy.secret),
+                agreement == "AGREE" and "(agrees with the probe)"
+                or "|cffff4444(DISAGREES with the probe)|r"))
+        elseif policy.state == "value" then
+            msg(("policy: C_Secrets.%s -> %s (not a boolean; read it, don't compare it)"):format(
+                policy.name, policy.shown))
+        else
+            msg(("policy: C_Secrets.%s %s"):format(policy.name,
+                policy.state == "absent" and "does not exist on this build" or "errored"))
+        end
+    else
+        chatLine("no C_Secrets policy call is mapped for this API - probe result only")
     end
     msg(("%s. Saved as secret probe #%d. |cffffcc00/reload|r to flush to disk."):format(
         inCombat and "|cffff8800IN COMBAT|r" or "Out of combat", #SkoposDB.secret))
@@ -662,8 +744,8 @@ local function AttrProbe(input)
         msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.attrs."):format(#lines - 30))
     end
     if not explicit then
-        chatLine("|cff888888absence is NOT proof: no enumerate-attributes API exists, so")
-        chatLine("|cff888888this checks a known list only. /sko attr <frame> <key> to test one.|r")
+        chatLine("absence is NOT proof: no enumerate-attributes API exists, so")
+        chatLine("this checks a known list only. /sko attr <frame> <key> to test one.")
     end
     msg(("Saved as attr probe #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.attrs))
 end
@@ -724,7 +806,7 @@ local function EventSniff(seconds)
     msg(("Sniffing ALL events for %d second(s) — go do the thing you want to trace."):format(dur))
     -- Nothing is written until the timer fires, so reloading mid-window loses the
     -- whole run with no error. Say so, because a silent loss looks like a broken command.
-    chatLine("|cffff8800do NOT /reload until the window closes|r — results are written when it ends")
+    msg("|cffff8800do NOT /reload until the window closes|r — results are written when it ends")
 
     C_Timer.After(dur, function()
         sniffFrame:UnregisterAllEvents()
@@ -933,7 +1015,7 @@ local function AddonInventory(pattern)
     if #results > 30 then
         msg(("...%d more not shown — |cffffcc00/reload|r and read SkoposDB.addons."):format(#results - 30))
     end
-    chatLine("|cff888888flags: L loaded, O load-on-demand, X disabled, P per-character, B Blizzard|r")
+    chatLine("flags: L loaded, O load-on-demand, X disabled, P per-character, B Blizzard")
     msg(("Saved as addon inventory #%d. |cffffcc00/reload|r to flush to disk."):format(#SkoposDB.addons))
 end
 

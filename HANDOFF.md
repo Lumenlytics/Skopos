@@ -1,12 +1,11 @@
 <!-- FLEET
 addon: Skopos
-version: 1.9.0
+version: 1.10.0
 status: DONE-UNVERIFIED
 owner-chat: Skopos
 needs-marshall:
-  - TEST: /sko addons shows Details heaviest, then /reload (~1 min, any time)
-  - DECIDE: should /sko secret consult C_Secrets policy as well as probing? options - report both and flag disagreement, replace probing, or leave as-is. Recommend report-both, since they answer different questions
-next-action: none queued - PARKING-LOT item 4 is fully built
+  - TEST: /sko secret UnitPower player then /sko secret UnitPower player 4, both should now print a C_Secrets policy line and AGREE (~2 min, any time)
+next-action: none queued - all PARKING-LOT items resolved
 broadcast-read: 2026-08-15
 updated: 2026-08-15
 -->
@@ -288,6 +287,22 @@ full text from disk.
 array of `index|luaType|SECRET-or-plain|renderedValue` strings. Secret values are
 recorded as the literal `<secret>` and **never** stored raw — a secret written into
 SavedVariables would either fail to serialise or poison whatever reads it back.
+
+**v1.10.0+ also reports the `C_Secrets` policy answer** and flags disagreement — the
+DECIDE Marshall settled 2026-08-15. Extra fields: `policyFn`, `policyState`
+(`boolean` / `value` / `absent` / `errored`), `policySecret`, `policyValue`,
+`agreement` (`AGREE` / `DISAGREE`, absent when no boolean policy answer exists).
+
+The two are **not** redundant. The probe says what *this* call returned in *this*
+context; the policy says what the rule is. **A disagreement is never reconciled
+silently** — it is the most interesting result the command can produce, since it means
+either the mapping is wrong or the context differs from the rule.
+
+The policy call receives **the same arguments as the probe**, because the question is
+context-dependent the same way: `ShouldUnitPowerBeSecret("player", 4)` is a different
+question from `ShouldUnitPowerBeSecret("player")`. The mapping keys on the probed
+function's leaf name, so dotted paths work. `Get*Secrecy` functions return richer than
+a boolean; those are reported verbatim rather than coerced into one.
 
 `inCombat` is load-bearing, not trivia: many values are secret **only** in combat, so
 a probe result is meaningless without knowing which state produced it. Unlike
