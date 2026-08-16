@@ -1,13 +1,13 @@
 <!-- FLEET
 addon: Skopos
 version: 1.10.0
-status: DONE-UNVERIFIED
+status: SHIPPED
 owner-chat: Skopos
 needs-marshall:
   - TEST: /sko secret UnitPower player then /sko secret UnitPower player 4, both should now print a C_Secrets policy line and AGREE (~2 min, any time)
-next-action: none queued - all PARKING-LOT items resolved
+next-action: none queued - all PARKING-LOT items resolved. REPO IS PUBLIC as of 2026-08-15 (Sniffer, at Marshall's request): README + GPL-3.0 LICENSE added, description/topics set. Everything you commit is world-readable now - no keys, no personal paths in new files, no half-finished commit messages
 broadcast-read: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-15 (Sniffer: repo made public)
 -->
 
 # Skopos — handoff
