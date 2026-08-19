@@ -6,6 +6,13 @@ Skopos has never been released; every version below shipped only to the local
 AddOns folder via `deploy.ps1`. Releases are Publisher's lane — this file exists
 so `publish.ps1` preflight has an entry to match `## Version` against.
 
+## 1.11.0
+
+- `/sko secret` records `restrictions` — `C_Secrets.HasSecretRestrictions()` — next to
+  `inCombat`, and prints it. Two probes of the same API on 2026-08-19, both reporting
+  `inCombat = false`, returned `plain` and then `SECRET`: the combat flag is a proxy,
+  not the thing that gates secrecy. `inCombat` is kept as a fact about the moment.
+
 ## 1.10.0
 
 - `/sko secret` now reports the `C_Secrets` policy answer alongside the empirical

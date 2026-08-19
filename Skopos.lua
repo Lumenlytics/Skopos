@@ -13,7 +13,7 @@
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.10.0"
+local VERSION = "1.11.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -546,6 +546,15 @@ local function SecretProbe(input)
     end
 
     local inCombat = InCombatLockdown() and true or false
+    -- InCombatLockdown() is NOT the secrecy state, only a proxy for it. Proved
+    -- 2026-08-19: two probes of UnitPower("player") 13 minutes apart, both reporting
+    -- inCombat = false, returned plain and then SECRET. Record what the engine itself
+    -- says, so a future reader is not left explaining a contradiction with a flag that
+    -- never determined the answer.
+    local okR, restrictions = pcall(function()
+        return C_Secrets and C_Secrets.HasSecretRestrictions and C_Secrets.HasSecretRestrictions()
+    end)
+    if not okR then restrictions = nil end
     local lines, anySecret, errText, headline = {}, false, nil, nil
 
     if type(target) ~= "function" then
@@ -584,6 +593,7 @@ local function SecretProbe(input)
         build = select(4, GetBuildInfo()),
         query = input,
         inCombat = inCombat,
+        restrictions = type(restrictions) == "boolean" and restrictions or nil,
         errored = errText,
         anySecret = anySecret,
         policyFn = policy and policy.name or nil,
@@ -618,6 +628,10 @@ local function SecretProbe(input)
     end
     msg(("%s. Saved as secret probe #%d. |cffffcc00/reload|r to flush to disk."):format(
         inCombat and "|cffff8800IN COMBAT|r" or "Out of combat", #SkoposDB.secret))
+    if type(restrictions) == "boolean" then
+        chatLine(("secret restrictions active: %s (this, not the combat flag, is what gates secrecy)")
+            :format(tostring(restrictions)))
+    end
 end
 
 -- There is NO "enumerate all attributes" call in the WoW API. GetAttribute answers

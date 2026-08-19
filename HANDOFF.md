@@ -1,11 +1,11 @@
 <!-- FLEET
 addon: Skopos
-version: 1.10.0
+version: 1.11.0
 status: DONE-UNVERIFIED
 owner-chat: Skopos
 needs-marshall:
-  - TEST: at a training dummy, ATTACK IT FIRST so you are in combat, then run `/sko secret UnitPower player` then `/sko secret UnitPower player 4` then `/reload` — PASS: the first prints `SECRET` with `policy: C_Secrets.ShouldUnitPowerBeSecret -> true`, the second prints `plain` with `-> false`, and both say `(agrees with the probe)`; FAIL: the two outputs are identical, which means the arguments are not reaching the policy call (~3 min, needs a target dummy; out of combat both read plain and the test proves nothing)
-next-action: CHANGELOG.md now exists for Publisher preflight; ready at 1.10.0 whenever Marshall wants it released
+  - TEST: run `/sko secret UnitPower player` then `/reload` — PASS: the output ends with a greyed line `secret restrictions active: true` or `false`; FAIL: no such line appears, meaning C_Secrets.HasSecretRestrictions is not resolving (~1 min, any character, anywhere)
+next-action: none queued; ready at 1.11.0 for Publisher whenever Marshall wants it cut
 broadcast-read: 2026-08-19
 updated: 2026-08-19
 -->
@@ -304,10 +304,18 @@ question from `ShouldUnitPowerBeSecret("player")`. The mapping keys on the probe
 function's leaf name, so dotted paths work. `Get*Secrecy` functions return richer than
 a boolean; those are reported verbatim rather than coerced into one.
 
-`inCombat` is load-bearing, not trivia: many values are secret **only** in combat, so
-a probe result is meaningless without knowing which state produced it. Unlike
-`/sko map`, this command deliberately runs in combat for exactly that reason — to
-answer "is this secret?" you usually need both readings of the same API.
+⚠ **`inCombat` is a proxy, and 2026-08-19 proved it is not the determinant.** Two
+probes of `UnitPower("player")` thirteen minutes apart, *both* reporting
+`inCombat = false`, returned `plain` and then `SECRET`. Combat lockdown did not change
+between them; the secrecy did. Recording only the combat flag therefore leaves a future
+reader trying to explain a contradiction using a field that never decided the answer.
+
+v1.11.0 records `restrictions` — `C_Secrets.HasSecretRestrictions()` — alongside it.
+**That is the state that gates secrecy.** `inCombat` is kept because it is still a fact
+about the moment and costs nothing, but read `restrictions` first.
+
+Still run each probe in both combat states: the point was never the flag, it was that
+the same API answers differently at different times, and one reading does not generalise.
 
 `SkoposDB.api` (v1.1.0+) is an append-only log of `/sko api` sweeps:
 `{time, build, query, count, results}`, where `results` is a sorted array of
@@ -382,7 +390,7 @@ toolset is unverified any more.
 | `/sko events` | 5s window, 6 distinct / 12 firings, frequency-sorted, args captured |
 | `/sko secret` | re-verified 2026-08-19 at 120100 with the v1.10.0 policy line — see below |
 
-### `/sko secret` policy line — TESTED 2026-08-19, and what it did NOT prove
+### `/sko secret` policy line — TESTED 2026-08-19, PASSED on the second attempt
 
 Marshall ran both halves out of combat. Output was identical for each:
 
@@ -398,15 +406,30 @@ and the AGREE comparison works.
 ⚠ **It did not prove argument pass-through, which was the point of the second half.**
 `/sko secret UnitPower player` and `/sko secret UnitPower player 4` produced byte-identical
 output, so a build where the args never reach `C_Secrets` would look exactly the same. That
-is a flaw in the test I wrote, not in the result he returned. The discriminating case is
-**in combat**, where primary power is secret and an explicit power type is not; that is now
-the outstanding TEST in the FLEET block.
+is a flaw in the test I wrote, not in the result he returned.
 
-⚠ **Primary power read PLAIN out of combat at 120100.** At 120007 the same probe returned
-`SECRET` out of combat (probe #3, 2026-07-28). Policy now agrees it is not secret. Either
-12.1 relaxed it or the earlier reading was class/context-specific and never generalised.
-**Muster's P4.1 rests on the 120007 reading** — that is Muster's chat to re-check, with
-`ShouldUnitPowerBeSecret` rather than another probe.
+**Re-run 22:33 the same day, and it passed** — the two halves finally differed:
+
+```
+/sko secret UnitPower player     ->  1|number|SECRET|<secret>   policy -> true   AGREE
+/sko secret UnitPower player 4   ->  1|number|plain|0           policy -> false  AGREE
+```
+
+Different arguments, different policy answers: **argument pass-through is proven.** The
+probe and the policy agreed in both directions, which is the other half of the design.
+
+Note both runs still reported `inCombat = false` — see the `restrictions` note above,
+which is the finding this test accidentally produced.
+
+⚠ **Correction to the paragraph this replaced.** It said primary power "read PLAIN out of
+combat at 120100" where 120007 gave `SECRET`, and framed that as a possible build change.
+**That framing was wrong.** Later the same evening, at the same build and still reporting
+`inCombat = false`, it returned `SECRET` again. So it varies by context within one build,
+not between builds, and no single reading of it should be generalised.
+
+**Muster's P4.1 rests on one such reading** — that is Muster's chat to re-check, and it
+should ask `ShouldUnitPowerBeSecret` rather than probe again, since the probe is exactly
+the instrument that produced three different answers here.
 
 Two findings worth carrying forward:
 
