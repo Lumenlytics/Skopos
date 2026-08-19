@@ -13,7 +13,7 @@
 -- SavedVariables only hit disk on /reload or logout.
 
 local ADDON_NAME = ...
-local VERSION = "1.11.0"
+local VERSION = "1.12.0"
 
 -- Map/grab line format, 8 pipe-delimited columns:
 -- debugName|objectType|parentDebugName|vis|WxH|strata:level|anchor|flags
@@ -546,15 +546,17 @@ local function SecretProbe(input)
     end
 
     local inCombat = InCombatLockdown() and true or false
-    -- InCombatLockdown() is NOT the secrecy state, only a proxy for it. Proved
-    -- 2026-08-19: two probes of UnitPower("player") 13 minutes apart, both reporting
-    -- inCombat = false, returned plain and then SECRET. Record what the engine itself
-    -- says, so a future reader is not left explaining a contradiction with a flag that
-    -- never determined the answer.
+    -- InCombatLockdown() is NOT the secrecy state, only a proxy for it.
+    -- UnitPower("player") came back SECRET with inCombat = false on 2026-08-15 09:38
+    -- and again 2026-08-18 22:33, so combat plainly is not the gate. Per
+    -- warcraft.wiki.gg Secret_values, restrictions also apply on restricted MAPS
+    -- (SecretOnRestrictedMaps) — which is why zone and instanceType are recorded too.
     local okR, restrictions = pcall(function()
         return C_Secrets and C_Secrets.HasSecretRestrictions and C_Secrets.HasSecretRestrictions()
     end)
     if not okR then restrictions = nil end
+    local _, instanceType = safe(IsInInstance)
+    local zone = safe(GetRealZoneText)
     local lines, anySecret, errText, headline = {}, false, nil, nil
 
     if type(target) ~= "function" then
@@ -594,6 +596,8 @@ local function SecretProbe(input)
         query = input,
         inCombat = inCombat,
         restrictions = type(restrictions) == "boolean" and restrictions or nil,
+        instanceType = type(instanceType) == "string" and instanceType or nil,
+        zone = type(zone) == "string" and zone or nil,
         errored = errText,
         anySecret = anySecret,
         policyFn = policy and policy.name or nil,
@@ -629,8 +633,8 @@ local function SecretProbe(input)
     msg(("%s. Saved as secret probe #%d. |cffffcc00/reload|r to flush to disk."):format(
         inCombat and "|cffff8800IN COMBAT|r" or "Out of combat", #SkoposDB.secret))
     if type(restrictions) == "boolean" then
-        chatLine(("secret restrictions active: %s (this, not the combat flag, is what gates secrecy)")
-            :format(tostring(restrictions)))
+        chatLine(("secret restrictions active: %s | zone: %s (%s) - restrictions, not the combat flag, gate secrecy")
+            :format(tostring(restrictions), zone or "?", instanceType or "?"))
     end
 end
 

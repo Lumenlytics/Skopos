@@ -6,12 +6,20 @@ Skopos has never been released; every version below shipped only to the local
 AddOns folder via `deploy.ps1`. Releases are Publisher's lane — this file exists
 so `publish.ps1` preflight has an entry to match `## Version` against.
 
+## 1.12.0
+
+- `/sko secret` records `zone` and `instanceType` (`IsInInstance`) per probe and prints
+  them. Secret restrictions apply on restricted MAPS as well as in combat
+  (`SecretOnRestrictedMaps`), so an out-of-combat SECRET inside an instance is expected;
+  without the zone recorded that reads as an anomaly.
+
 ## 1.11.0
 
 - `/sko secret` records `restrictions` — `C_Secrets.HasSecretRestrictions()` — next to
-  `inCombat`, and prints it. Two probes of the same API on 2026-08-19, both reporting
-  `inCombat = false`, returned `plain` and then `SECRET`: the combat flag is a proxy,
-  not the thing that gates secrecy. `inCombat` is kept as a fact about the moment.
+  `inCombat`, and prints it. Combat is not what gates secrecy: `UnitPower player` returns
+  SECRET with `inCombat = false`. (The changelog entry here originally cited a plain→SECRET
+  flip between two probes; that was a misreading of the log — they were different queries.
+  The fix is right, the reason given for it was not.)
 
 ## 1.10.0
 

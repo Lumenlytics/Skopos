@@ -1,11 +1,11 @@
 <!-- FLEET
 addon: Skopos
-version: 1.11.0
+version: 1.12.0
 status: DONE-UNVERIFIED
 owner-chat: Skopos
 needs-marshall:
-  - TEST: run `/sko secret UnitPower player` then `/reload` — PASS: the output ends with a greyed line `secret restrictions active: true` or `false`; FAIL: no such line appears, meaning C_Secrets.HasSecretRestrictions is not resolving (~1 min, any character, anywhere)
-next-action: none queued; ready at 1.11.0 for Publisher whenever Marshall wants it cut
+  - TEST: out of combat in a CAPITAL, run `/sko secret UnitPower player`; then out of combat inside any DUNGEON, run it again; then `/reload` — PASS: both print `secret restrictions active: <bool> | zone: <name> (<type>)`, the capital says `false` with `(none)` and the dungeon says `true` with `(party)`, and the dungeon result is SECRET; FAIL: no `secret restrictions` line at all (HasSecretRestrictions not resolving), or both zones report identical restrictions (the map-restriction theory from BROADCAST 2026-08-18 is wrong and secrecy is gated by something else) (~5 min, needs a dungeon zone-in; solo Follower difficulty is fine)
+next-action: none queued; ready at 1.12.0 for Publisher whenever Marshall wants it cut
 broadcast-read: 2026-08-19
 updated: 2026-08-19
 -->
@@ -304,15 +304,40 @@ question from `ShouldUnitPowerBeSecret("player")`. The mapping keys on the probe
 function's leaf name, so dotted paths work. `Get*Secrecy` functions return richer than
 a boolean; those are reported verbatim rather than coerced into one.
 
-⚠ **`inCombat` is a proxy, and 2026-08-19 proved it is not the determinant.** Two
-probes of `UnitPower("player")` thirteen minutes apart, *both* reporting
-`inCombat = false`, returned `plain` and then `SECRET`. Combat lockdown did not change
-between them; the secrecy did. Recording only the combat flag therefore leaves a future
-reader trying to explain a contradiction using a field that never decided the answer.
+⚠ **`inCombat` is a proxy, not the determinant — but the evidence first cited for that
+was wrong, and is corrected here.**
 
-v1.11.0 records `restrictions` — `C_Secrets.HasSecretRestrictions()` — alongside it.
-**That is the state that gates secrecy.** `inCombat` is kept because it is still a fact
-about the moment and costs nothing, but read `restrictions` first.
+The v1.11.0 note claimed two probes of `UnitPower("player")` thirteen minutes apart, both
+out of combat, returned `plain` then `SECRET`. **They were not the same query.** Verified
+against `SkoposDB.secret` on disk: 22:20 was `UnitPower player 4` (twice — Marshall ran the
+same half twice), 22:33 was `UnitPower player`. Different queries, so no flip.
+
+The full log, every `UnitPower` probe on both builds:
+
+| when | build | query | inCombat | result |
+|---|---|---|---|---|
+| 07-28 15:28 | 120007 | `UnitPower player` | true | **SECRET** |
+| 07-28 17:38 | 120007 | `UnitPower player` | false | **SECRET** |
+| 07-28 17:40 | 120007 | `UnitPower player` | true | **SECRET** |
+| 07-28 17:38–17:40 | 120007 | `UnitPower player 4` ×3 | both | plain 0 / 7 |
+| 08-15 09:38 | 120100 | `UnitPower player` | false | **SECRET** (policy true) |
+| 08-18 22:20 | 120100 | `UnitPower player 4` ×2 | false | plain 0 |
+| 08-18 22:33 | 120100 | `UnitPower player` | false | **SECRET** (policy true) |
+| 08-18 22:33 | 120100 | `UnitPower player 4` | false | plain 0 |
+
+**Primary power is SECRET in every probe ever taken**, on both builds, in and out of
+combat. It has never once read plain. The only plain reads are power type 4 — a secondary
+resource, which per `SecretWhenUnitPowerRestricted` is flagged never-secret.
+
+**The conclusion survives on better evidence:** `UnitPower player` is SECRET at 08-15 09:38
+and 08-18 22:33 with `inCombat = false` both times, so combat is plainly not the gate. Per
+warcraft.wiki.gg *Secret values*, `SecretOnRestrictedMaps` applies alongside
+`SecretWhenInCombat` — restrictions are a **map/context** state. An out-of-combat SECRET
+inside an instance is expected, not anomalous.
+
+v1.11.0 records `restrictions` (`C_Secrets.HasSecretRestrictions()`); **v1.12.0 adds `zone`
+and `instanceType`** (`IsInInstance`), so the map-restriction case is visible instead of
+guessed at. `inCombat` is kept as a fact about the moment — read `restrictions` first.
 
 Still run each probe in both combat states: the point was never the flag, it was that
 the same API answers differently at different times, and one reading does not generalise.
@@ -421,15 +446,15 @@ probe and the policy agreed in both directions, which is the other half of the d
 Note both runs still reported `inCombat = false` — see the `restrictions` note above,
 which is the finding this test accidentally produced.
 
-⚠ **Correction to the paragraph this replaced.** It said primary power "read PLAIN out of
-combat at 120100" where 120007 gave `SECRET`, and framed that as a possible build change.
-**That framing was wrong.** Later the same evening, at the same build and still reporting
-`inCombat = false`, it returned `SECRET` again. So it varies by context within one build,
-not between builds, and no single reading of it should be generalised.
+⚠ **Both earlier versions of this note were wrong and are withdrawn.** One claimed a
+build-to-build change (`plain` at 120100 vs `SECRET` at 120007); the next claimed a
+within-build context flip. Neither happened — see the verified table above. `UnitPower
+player` has returned SECRET in every probe on record. The apparent flip was a comparison
+between `player` and `player 4`.
 
-**Muster's P4.1 rests on one such reading** — that is Muster's chat to re-check, and it
-should ask `ShouldUnitPowerBeSecret` rather than probe again, since the probe is exactly
-the instrument that produced three different answers here.
+**Muster's P4.1 is unaffected by any flip, because there was none** — but it should still
+ask `ShouldUnitPowerBeSecret` / `GetPowerTypeSecrecy` rather than probe, and it must not
+assume a secondary resource behaves like the primary. That is Muster's chat to act on.
 
 Two findings worth carrying forward:
 
