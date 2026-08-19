@@ -1,13 +1,13 @@
 <!-- FLEET
 addon: Skopos
 version: 1.10.0
-status: SHIPPED
+status: DONE-UNVERIFIED
 owner-chat: Skopos
 needs-marshall:
-  - TEST: /sko secret UnitPower player then /sko secret UnitPower player 4, both should now print a C_Secrets policy line and AGREE (~2 min, any time)
-next-action: none queued - all PARKING-LOT items resolved. REPO IS PUBLIC as of 2026-08-15 (Sniffer, at Marshall's request): README + GPL-3.0 LICENSE added, description/topics set. Everything you commit is world-readable now - no keys, no personal paths in new files, no half-finished commit messages
-broadcast-read: 2026-08-15
-updated: 2026-08-15 (Sniffer: repo made public)
+  - TEST: at a training dummy, ATTACK IT FIRST so you are in combat, then run `/sko secret UnitPower player` then `/sko secret UnitPower player 4` then `/reload` — PASS: the first prints `SECRET` with `policy: C_Secrets.ShouldUnitPowerBeSecret -> true`, the second prints `plain` with `-> false`, and both say `(agrees with the probe)`; FAIL: the two outputs are identical, which means the arguments are not reaching the policy call (~3 min, needs a target dummy; out of combat both read plain and the test proves nothing)
+next-action: CHANGELOG.md now exists for Publisher preflight; ready at 1.10.0 whenever Marshall wants it released
+broadcast-read: 2026-08-19
+updated: 2026-08-19
 -->
 
 # Skopos — handoff
@@ -380,7 +380,33 @@ toolset is unverified any more.
 | `/sko api` | **C_\* descent works**: 258 namespaces swept, `unreadable` empty |
 | `/sko attr @last` | resolved the anonymous leaf grab captured — `found = 0` of 133 |
 | `/sko events` | 5s window, 6 distinct / 12 firings, frequency-sorted, args captured |
-| `/sko secret` | verified at v1.2.0 (pre-patch); **not re-run since 12.1** |
+| `/sko secret` | re-verified 2026-08-19 at 120100 with the v1.10.0 policy line — see below |
+
+### `/sko secret` policy line — TESTED 2026-08-19, and what it did NOT prove
+
+Marshall ran both halves out of combat. Output was identical for each:
+
+```
+UnitPower -> 1 value(s)
+  1|number|plain|0
+policy: C_Secrets.ShouldUnitPowerBeSecret -> false  (agrees with the probe)
+```
+
+**Passed, as far as it goes:** the policy line prints, resolves the right function,
+and the AGREE comparison works.
+
+⚠ **It did not prove argument pass-through, which was the point of the second half.**
+`/sko secret UnitPower player` and `/sko secret UnitPower player 4` produced byte-identical
+output, so a build where the args never reach `C_Secrets` would look exactly the same. That
+is a flaw in the test I wrote, not in the result he returned. The discriminating case is
+**in combat**, where primary power is secret and an explicit power type is not; that is now
+the outstanding TEST in the FLEET block.
+
+⚠ **Primary power read PLAIN out of combat at 120100.** At 120007 the same probe returned
+`SECRET` out of combat (probe #3, 2026-07-28). Policy now agrees it is not secret. Either
+12.1 relaxed it or the earlier reading was class/context-specific and never generalised.
+**Muster's P4.1 rests on the 120007 reading** — that is Muster's chat to re-check, with
+`ShouldUnitPowerBeSecret` rather than another probe.
 
 Two findings worth carrying forward:
 
